@@ -1,0 +1,29 @@
+{
+  "name": "portfolio-vue",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "vercel": "vercel",
+    "deploy": "vercel --prod"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "vue": "^3.4.21",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@vercel/detect-agent": "^1.2.3",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "autoprefixer": "^10.4.19",
+    "pg": "^8.15.5",
+    "postcss": "^8.4.38",
+    "tailwindcss": "^3.4.3",
+    "vercel": "^54.21.1",
+    "vite": "^5.2.8"
+  }
+}

@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Build output
+dist/
+
+# Temp files
+*.timestamp-*.mjs
+init-db.mjs
+
+# Vercel
+.vercel/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# 部署脚本（含 token 调用逻辑，不入库）
+deploy-api.mjs
+
+# 本地环境变量示例占位（真实 .env 已排除）
+.env.example
