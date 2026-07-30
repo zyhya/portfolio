@@ -180,5 +180,5 @@ export async function initData() {
 // ============ Schema Sync ============
 
 export async function syncSchema() {
-  return request('/api/sync', { method: 'POST' })
+  return request('/api/init', { method: 'POST', body: JSON.stringify({ syncOnly: true }) })
 }

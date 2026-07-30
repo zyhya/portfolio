@@ -18,10 +18,10 @@ export async function POST(request) {
   try {
     const body = await request.json();
     const { rows } = await sql`
-      INSERT INTO projects (title_zh, title_en, desc_zh, desc_en, image, link, github, tags, category, featured, sort_order)
+      INSERT INTO projects (title_zh, title_en, desc_zh, desc_en, image, video, link, github, tags, category, featured, sort_order)
       VALUES (${body.title_zh || ''}, ${body.title_en || ''}, ${body.desc_zh || ''}, ${body.desc_en || ''},
-              ${body.image || ''}, ${body.link || ''}, ${body.github || ''},
-              ${body.tags || []}, ${body.category || 'web'}, ${body.featured || false}, ${body.sort_order || 0})
+              ${body.image || ''}, ${body.video || ''}, ${body.link || ''}, ${body.github || ''},
+              ${body.tags || []}, ${body.category || 'illustration'}, ${body.featured || false}, ${body.sort_order || 0})
       RETURNING *
     `;
     return jsonResponse(rows[0], 201);

@@ -89,7 +89,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useData, useAdmin } from '../composables/useData.js'
-import { adminSignOut } from '../lib/api.js'
+import { adminSignOut, syncSchema } from '../lib/api.js'
 import ProjectManager from '../components/admin/ProjectManager.vue'
 import SkillManager from '../components/admin/SkillManager.vue'
 import ProfileEditor from '../components/admin/ProfileEditor.vue'
@@ -119,6 +119,12 @@ const hasData = computed(() =>
 )
 
 onMounted(async () => {
+  // 进入后台先静默同步表结构，确保 video 等新字段存在（失败可忽略，也可手动点同步按钮）
+  try {
+    await syncSchema()
+  } catch (e) {
+    console.warn('同步表结构失败，可稍后在作品管理页点「同步数据表」按钮：', e.message)
+  }
   await fetchAll()
   loadingData.value = false
 })

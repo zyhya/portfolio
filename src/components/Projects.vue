@@ -36,7 +36,26 @@
         >
           <!-- Project Visual -->
           <div class="relative h-48 overflow-hidden">
+            <!-- Video -->
+            <video
+              v-if="project.video"
+              :src="project.video"
+              class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              autoplay
+              muted
+              loop
+              playsinline
+            ></video>
+            <!-- Image -->
+            <img
+              v-else-if="project.image"
+              :src="project.image"
+              :alt="project.title"
+              class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            />
+            <!-- Gradient fallback -->
             <div
+              v-else
               class="absolute inset-0 bg-gradient-to-br opacity-90 transition-transform duration-500 group-hover:scale-110"
               :style="{ background: projectGradients[i % projectGradients.length] }"
             ></div>
@@ -45,6 +64,10 @@
             <!-- Category Badge -->
             <div class="absolute top-4 left-4 px-3 py-1 rounded-full bg-bg-dark/60 backdrop-blur text-xs font-mono text-white border border-white/10">
               {{ project.categoryLabel }}
+            </div>
+            <!-- Media type indicator -->
+            <div v-if="project.video" class="absolute top-4 right-4 px-2 py-1 rounded-full bg-bg-dark/60 backdrop-blur text-xs font-mono text-neon-cyan border border-white/10">
+              ▶ 视频
             </div>
             <!-- Project number -->
             <div class="absolute bottom-4 right-4 text-5xl font-black text-white/10">
@@ -71,7 +94,7 @@
               </span>
             </div>
             <!-- View Link -->
-            <a href="#" class="inline-flex items-center gap-1.5 text-sm text-neon-cyan hover:gap-3 transition-all font-medium">
+            <a :href="project.link || '#'" class="inline-flex items-center gap-1.5 text-sm text-neon-cyan hover:gap-3 transition-all font-medium">
               {{ t.projects.viewMore }}
               <span>→</span>
             </a>

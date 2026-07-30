@@ -23,12 +23,12 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">职业头衔（中文）</label>
-          <input v-model="form.title_zh" type="text" placeholder="全栈开发工程师"
+          <input v-model="form.title_zh" type="text" placeholder="插画师"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">职业头衔（英文）</label>
-          <input v-model="form.title_en" type="text" placeholder="Full-Stack Developer"
+          <input v-model="form.title_en" type="text" placeholder="Illustrator"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
       </div>
@@ -36,12 +36,12 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">一句话标语（中文）</label>
-          <input v-model="form.tagline_zh" type="text" placeholder="用代码构建优雅的数字体验"
+          <input v-model="form.tagline_zh" type="text" placeholder="用画笔描绘世界，用色彩讲述故事"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">一句话标语（英文）</label>
-          <input v-model="form.tagline_en" type="text" placeholder="Building elegant digital experiences"
+          <input v-model="form.tagline_en" type="text" placeholder="Painting worlds with brushstrokes, telling stories with colors"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
       </div>
@@ -60,12 +60,12 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">所在地（中文）</label>
-          <input v-model="form.location_zh" type="text" placeholder="中国 · 深圳"
+          <input v-model="form.location_zh" type="text" placeholder="中国 · 北京"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">所在地（英文）</label>
-          <input v-model="form.location_en" type="text" placeholder="Shenzhen, China"
+          <input v-model="form.location_en" type="text" placeholder="Beijing, China"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
       </div>

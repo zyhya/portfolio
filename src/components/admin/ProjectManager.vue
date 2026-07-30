@@ -2,24 +2,35 @@
   <div class="space-y-6">
     <div class="flex items-center justify-between">
       <h1 class="text-3xl font-bold text-white">作品管理</h1>
-      <button @click="startAdd"
-        class="px-5 py-3 rounded-xl bg-gradient-to-r from-neon-cyan to-neon-purple text-bg-dark font-bold text-sm hover:scale-105 transition-transform">
-        + 新增作品
-      </button>
+      <div class="flex items-center gap-2">
+        <button @click="syncTable" :disabled="syncing"
+          class="px-5 py-3 rounded-xl glass-card text-gray-400 text-sm hover:text-neon-cyan transition-colors disabled:opacity-50">
+          {{ syncing ? '同步中...' : '🔧 同步数据表' }}
+        </button>
+        <button @click="startAdd"
+          class="px-5 py-3 rounded-xl bg-gradient-to-r from-neon-cyan to-neon-purple text-bg-dark font-bold text-sm hover:scale-105 transition-transform">
+          + 新增作品
+        </button>
+      </div>
     </div>
 
     <!-- List -->
     <div v-if="!editing" class="space-y-3">
       <div v-for="project in state.projects" :key="project.id"
         class="glass-card rounded-2xl p-5 flex items-center gap-4 group">
-        <div class="w-12 h-12 rounded-xl bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20 flex items-center justify-center text-xl">
-          {{ categoryIcons[project.category] || '📦' }}
+        <!-- Thumbnail -->
+        <div class="w-12 h-12 rounded-xl overflow-hidden flex items-center justify-center text-xl flex-shrink-0"
+          :class="project.image || project.video ? '' : 'bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20'">
+          <img v-if="project.image" :src="project.image" class="w-full h-full object-cover" />
+          <video v-else-if="project.video" :src="project.video" class="w-full h-full object-cover" muted />
+          <span v-else>{{ categoryIcons[project.category] || '🎨' }}</span>
         </div>
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2">
             <h3 class="text-white font-bold truncate">{{ project.title_zh || project.title_en }}</h3>
             <span class="px-2 py-0.5 rounded-md bg-white/5 text-xs font-mono text-gray-400">{{ project.category }}</span>
             <span v-if="project.featured" class="px-2 py-0.5 rounded-md bg-neon-pink/10 text-xs text-neon-pink">★ 精选</span>
+            <span v-if="project.video" class="px-2 py-0.5 rounded-md bg-neon-cyan/10 text-xs text-neon-cyan">▶ 视频</span>
           </div>
           <p class="text-sm text-gray-500 truncate mt-1">{{ project.desc_zh || project.desc_en }}</p>
           <div v-if="project.tags?.length" class="flex gap-1.5 mt-2">
@@ -43,12 +54,12 @@
         <div class="grid grid-cols-2 gap-4">
           <div>
             <label class="block text-xs text-gray-500 font-mono mb-2">标题（中文）</label>
-            <input v-model="form.title_zh" type="text" placeholder="智能数据看板"
+            <input v-model="form.title_zh" type="text" placeholder="春日少女"
               class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
           </div>
           <div>
             <label class="block text-xs text-gray-500 font-mono mb-2">标题（英文）</label>
-            <input v-model="form.title_en" type="text" placeholder="Smart Dashboard"
+            <input v-model="form.title_en" type="text" placeholder="Spring Girl"
               class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
           </div>
         </div>
@@ -57,10 +68,10 @@
             <label class="block text-xs text-gray-500 font-mono mb-2">分类</label>
             <select v-model="form.category"
               class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none">
-              <option value="web">网站</option>
-              <option value="app">应用</option>
-              <option value="game">游戏</option>
-              <option value="design">设计</option>
+              <option value="illustration">插画</option>
+              <option value="character">角色</option>
+              <option value="scene">场景</option>
+              <option value="commercial">商业</option>
             </select>
           </div>
           <div>
@@ -71,18 +82,40 @@
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">描述（中文）</label>
-          <textarea v-model="form.desc_zh" rows="2" placeholder="项目描述..."
+          <textarea v-model="form.desc_zh" rows="2" placeholder="作品描述..."
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none resize-none"></textarea>
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">描述（英文）</label>
-          <textarea v-model="form.desc_en" rows="2" placeholder="Project description..."
+          <textarea v-model="form.desc_en" rows="2" placeholder="Artwork description..."
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none resize-none"></textarea>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">技术栈（逗号分隔）</label>
-          <input v-model="tagsInput" type="text" placeholder="Vue 3, D3.js, WebSocket"
+          <label class="block text-xs text-gray-500 font-mono mb-2">标签（逗号分隔）</label>
+          <input v-model="tagsInput" type="text" placeholder="Procreate, 角色设计, 数字绘画"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+        </div>
+        <!-- Image URL -->
+        <div>
+          <label class="block text-xs text-gray-500 font-mono mb-2">作品图片 URL（jpg/png/webp/gif）</label>
+          <input v-model="form.image" type="text" placeholder="https://example.com/artwork.jpg"
+            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <p class="text-xs text-gray-600 mt-1">填写图片链接，支持 jpg / png / webp / gif 等格式</p>
+          <!-- Preview -->
+          <div v-if="form.image" class="mt-2 rounded-xl overflow-hidden h-32 bg-white/5">
+            <img :src="form.image" class="w-full h-full object-cover" @error="onImgError" />
+          </div>
+        </div>
+        <!-- Video URL -->
+        <div>
+          <label class="block text-xs text-gray-500 font-mono mb-2">作品视频 URL（mp4/webm/mov）</label>
+          <input v-model="form.video" type="text" placeholder="https://example.com/process.mp4"
+            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <p class="text-xs text-gray-600 mt-1">填写视频链接，支持 mp4 / webm / mov 等格式（可留空）</p>
+          <!-- Preview -->
+          <div v-if="form.video" class="mt-2 rounded-xl overflow-hidden h-32 bg-white/5">
+            <video :src="form.video" class="w-full h-full object-cover" muted controls />
+          </div>
         </div>
         <div class="grid grid-cols-2 gap-4">
           <div>
@@ -91,8 +124,8 @@
               class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
           </div>
           <div>
-            <label class="block text-xs text-gray-500 font-mono mb-2">GitHub</label>
-            <input v-model="form.github" type="text" placeholder="https://github.com/..."
+            <label class="block text-xs text-gray-500 font-mono mb-2">外部链接（如 Behance）</label>
+            <input v-model="form.github" type="text" placeholder="https://..."
               class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
           </div>
         </div>
@@ -121,6 +154,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useData, useAdmin } from '../../composables/useData.js'
+import { syncSchema } from '../../lib/api.js'
 
 const { state } = useData()
 const { addProject, updateProject, deleteProject } = useAdmin()
@@ -128,15 +162,32 @@ const { addProject, updateProject, deleteProject } = useAdmin()
 const editing = ref(false)
 const saving = ref(false)
 const error = ref('')
+const syncing = ref(false)
 const tagsInput = ref('')
 
-const categoryIcons = { web: '🌐', app: '📱', game: '🎮', design: '🎨' }
+async function syncTable() {
+  syncing.value = true
+  try {
+    const res = await syncSchema()
+    if (res && res.success) {
+      alert('数据表同步成功！（已确保视频字段等结构存在）')
+    } else {
+      alert('同步完成')
+    }
+  } catch (e) {
+    alert('同步失败: ' + e.message)
+  }
+  syncing.value = false
+}
+
+const categoryIcons = { illustration: '🎨', character: '👤', scene: '🏔️', commercial: '💼' }
 
 const form = ref({
   id: null,
   title_zh: '', title_en: '',
-  category: 'web',
+  category: 'illustration',
   desc_zh: '', desc_en: '',
+  image: '', video: '',
   link: '', github: '',
   sort_order: 1,
   featured: false,
@@ -144,8 +195,8 @@ const form = ref({
 
 function startAdd() {
   form.value = {
-    id: null, title_zh: '', title_en: '', category: 'web',
-    desc_zh: '', desc_en: '', link: '', github: '',
+    id: null, title_zh: '', title_en: '', category: 'illustration',
+    desc_zh: '', desc_en: '', image: '', video: '', link: '', github: '',
     sort_order: state.projects.length + 1, featured: false,
   }
   tagsInput.value = ''
@@ -160,6 +211,10 @@ function startEdit(project) {
   editing.value = true
 }
 
+function onImgError(e) {
+  e.target.style.display = 'none'
+}
+
 async function handleSave() {
   saving.value = true
   error.value = ''
@@ -171,6 +226,8 @@ async function handleSave() {
       desc_zh: form.value.desc_zh,
       desc_en: form.value.desc_en,
       tags: tagsInput.value.split(',').map(s => s.trim()).filter(Boolean),
+      image: form.value.image || '',
+      video: form.value.video || '',
       link: form.value.link || '',
       github: form.value.github || '',
       sort_order: form.value.sort_order || 1,

@@ -54,10 +54,10 @@ const t = i18n.t
 
 const isVisible = ref(false)
 const categoryIcons = {
-  frontend: '💻',
-  backend: '⚙️',
-  design: '🎨',
-  devops: '🚀',
+  illustration: '✏️',
+  digital: '💻',
+  traditional: '🖌️',
+  animation: '🎬',
 }
 
 onMounted(() => {

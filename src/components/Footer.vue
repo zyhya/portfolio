@@ -5,10 +5,10 @@
         <!-- Left: Logo & Copyright -->
         <div class="flex items-center gap-3">
           <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple flex items-center justify-center font-bold text-bg-dark text-sm">
-            M
+            韩
           </div>
           <div>
-            <div class="text-sm font-bold text-white">Ming Zhang</div>
+            <div class="text-sm font-bold text-white">韩敬文</div>
             <div class="text-xs text-gray-500 font-mono">© {{ year }} {{ t.footer.rights }}</div>
           </div>
         </div>

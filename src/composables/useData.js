@@ -43,10 +43,13 @@ function mergeToI18n() {
       title: i18n.locale === 'zh' ? p.title_zh : p.title_en,
       desc: i18n.locale === 'zh' ? p.desc_zh : p.desc_en,
       tags: p.tags || [],
+      tech: p.tags || [],
       category: p.category,
+      categoryLabel: (t.projects.filters && t.projects.filters[p.category]) || p.category,
       link: p.link,
       github: p.github,
       image: p.image,
+      video: p.video,
       featured: p.featured,
     }))
   }

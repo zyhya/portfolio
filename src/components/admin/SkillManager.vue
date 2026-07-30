@@ -45,15 +45,15 @@
           <label class="block text-xs text-gray-500 font-mono mb-2">分类</label>
           <select v-model="form.category"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none">
-            <option value="frontend">前端开发</option>
-            <option value="backend">后端技术</option>
-            <option value="design">设计工具</option>
-            <option value="devops">DevOps</option>
+            <option value="illustration">插画绘制</option>
+            <option value="digital">数字绘画</option>
+            <option value="traditional">传统媒介</option>
+            <option value="animation">动画与3D</option>
           </select>
         </div>
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">技能名称</label>
-          <input v-model="form.name" type="text" placeholder="Vue.js"
+          <input v-model="form.name" type="text" placeholder="角色设计"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
         <div>
@@ -90,15 +90,15 @@ const editing = ref(false)
 const saving = ref(false)
 const error = ref('')
 
-const categoryIcons = { frontend: '💻', backend: '⚙️', design: '🎨', devops: '🚀' }
-const categoryLabels = { frontend: '前端开发', backend: '后端技术', design: '设计工具', devops: 'DevOps' }
+const categoryIcons = { illustration: '✏️', digital: '💻', traditional: '🖌️', animation: '🎬' }
+const categoryLabels = { illustration: '插画绘制', digital: '数字绘画', traditional: '传统媒介', animation: '动画与3D' }
 
-const form = ref({ id: null, category: 'frontend', name: '', level: 80, sort_order: 1 })
+const form = ref({ id: null, category: 'illustration', name: '', level: 80, sort_order: 1 })
 
 const groupedSkills = computed(() => {
   const grouped = {}
   state.skills.forEach(s => {
-    const cat = s.category || 'frontend'
+    const cat = s.category || 'illustration'
     if (!grouped[cat]) grouped[cat] = []
     grouped[cat].push(s)
   })
@@ -106,7 +106,7 @@ const groupedSkills = computed(() => {
 })
 
 function startAdd() {
-  form.value = { id: null, category: 'frontend', name: '', level: 80, sort_order: state.skills.length + 1 }
+  form.value = { id: null, category: 'illustration', name: '', level: 80, sort_order: state.skills.length + 1 }
   error.value = ''
   editing.value = true
 }

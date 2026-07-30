@@ -7,9 +7,9 @@
       <!-- Logo -->
       <a href="#home" class="flex items-center gap-2 group">
         <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-neon-cyan to-neon-purple flex items-center justify-center font-bold text-bg-dark text-lg group-hover:scale-110 transition-transform">
-          M
+          韩
         </div>
-        <span class="font-bold text-lg gradient-text">Ming.dev</span>
+        <span class="font-bold text-lg gradient-text">Jingwen.art</span>
       </a>
 
       <!-- Desktop Nav -->

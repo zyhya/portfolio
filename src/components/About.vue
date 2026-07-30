@@ -19,7 +19,7 @@
 
             <!-- Avatar placeholder -->
             <div class="relative m-8 rounded-3xl glass-card overflow-hidden aspect-square flex items-center justify-center">
-              <div class="text-9xl gradient-text font-black opacity-50">M</div>
+              <div class="text-9xl gradient-text font-black opacity-50">韩</div>
               <!-- Floating badges -->
               <div class="absolute top-4 right-4 px-3 py-1 rounded-full bg-neon-green/20 text-neon-green text-xs font-mono border border-neon-green/30">
                 ● Available
@@ -28,10 +28,10 @@
 
             <!-- Floating tech icons -->
             <div class="absolute -top-4 -right-4 w-14 h-14 rounded-2xl glass-card flex items-center justify-center text-2xl animate-float">
-              ⚡
+              🎨
             </div>
             <div class="absolute -bottom-4 -left-4 w-14 h-14 rounded-2xl glass-card flex items-center justify-center text-2xl animate-float" style="animation-delay: 2s">
-              🎨
+              ✏️
             </div>
           </div>
         </div>

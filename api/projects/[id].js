@@ -13,10 +13,11 @@ export async function PUT(request, { params }) {
         desc_zh = ${body.desc_zh || ''},
         desc_en = ${body.desc_en || ''},
         image = ${body.image || ''},
+        video = ${body.video || ''},
         link = ${body.link || ''},
         github = ${body.github || ''},
         tags = ${body.tags || []},
-        category = ${body.category || 'web'},
+        category = ${body.category || 'illustration'},
         featured = ${body.featured || false},
         sort_order = ${body.sort_order || 0}
       WHERE id = ${id}
