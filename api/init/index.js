@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS profile (
   years_exp INT DEFAULT 5,
   projects_count INT DEFAULT 200,
   clients_count INT DEFAULT 50,
+  social_links TEXT DEFAULT '[]',
   updated_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -48,14 +49,6 @@ CREATE TABLE IF NOT EXISTS skills (
   sort_order INT DEFAULT 0
 );
 
-CREATE TABLE IF NOT EXISTS social_links (
-  id SERIAL PRIMARY KEY,
-  name TEXT NOT NULL,
-  url TEXT DEFAULT '#',
-  icon TEXT DEFAULT '',
-  sort_order INT DEFAULT 0
-);
-
 CREATE TABLE IF NOT EXISTS contact_messages (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
@@ -68,8 +61,9 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 `.trim();
 
 const DEFAULT_DATA = `
-INSERT INTO profile (name_zh, name_en, title_zh, title_en, tagline_zh, tagline_en, bio_zh, bio_en, email, phone, location_zh, location_en, years_exp, projects_count, clients_count)
-SELECT '韩敬文', 'Jingwen Han', '插画师', 'Illustrator', '用画笔描绘世界，用色彩讲述故事', 'Painting worlds with brushstrokes, telling stories with colors', '5年插画创作经验，专注于角色设计与场景插画。热爱艺术，追求独特的视觉表达。', '5 years of illustration experience, specializing in character design and scene illustration.', 'contact@example.com', '+86 138 0000 0000', '中国 · 北京', 'Beijing, China', 5, 200, 50
+INSERT INTO profile (name_zh, name_en, title_zh, title_en, tagline_zh, tagline_en, bio_zh, bio_en, email, phone, location_zh, location_en, years_exp, projects_count, clients_count, social_links)
+SELECT '韩敬文', 'Jingwen Han', '插画师', 'Illustrator', '用画笔描绘世界，用色彩讲述故事', 'Painting worlds with brushstrokes, telling stories with colors', '5年插画创作经验，专注于角色设计与场景插画。热爱艺术，追求独特的视觉表达。', '5 years of illustration experience, specializing in character design and scene illustration.', 'contact@example.com', '+86 138 0000 0000', '中国 · 北京', 'Beijing, China', 5, 200, 50,
+'[{"name":"Behance","url":"https://behance.net","icon":"🎨","sort_order":1},{"name":"ArtStation","url":"https://artstation.com","icon":"🖼️","sort_order":2},{"name":"Instagram","url":"https://instagram.com","icon":"📸","sort_order":3},{"name":"微博","url":"https://weibo.com","icon":"📱","sort_order":4}]'
 WHERE NOT EXISTS (SELECT 1 FROM profile);
 
 INSERT INTO projects (title_zh, title_en, desc_zh, desc_en, image, video, link, github, tags, category, featured, sort_order) VALUES
@@ -90,13 +84,6 @@ INSERT INTO skills (name, level, icon, category, sort_order) VALUES
 ('彩铅', 82, '', 'traditional', 2),
 ('After Effects', 75, '', 'animation', 1),
 ('Blender 3D', 70, '', 'animation', 2)
-ON CONFLICT DO NOTHING;
-
-INSERT INTO social_links (name, url, icon, sort_order) VALUES
-('Behance', 'https://behance.net', '🎨', 1),
-('ArtStation', 'https://artstation.com', '🖼️', 2),
-('Instagram', 'https://instagram.com', '📸', 3),
-('Weibo', 'https://weibo.com', '📱', 4)
 ON CONFLICT DO NOTHING;
 `.trim();
 
@@ -127,10 +114,16 @@ export async function POST(request) {
       }
     }
 
-    // 尝试添加 video 字段（兼容已有表）
+    // 兼容已有表：补加新字段
     try {
       await sql.query('ALTER TABLE projects ADD COLUMN IF NOT EXISTS video TEXT DEFAULT \'\'');
       results.push({ ok: true, note: 'video column ensured' });
+    } catch (e) {
+      results.push({ ok: false, error: e.message });
+    }
+    try {
+      await sql.query('ALTER TABLE profile ADD COLUMN IF NOT EXISTS social_links TEXT DEFAULT \'\'');
+      results.push({ ok: true, note: 'social_links column ensured' });
     } catch (e) {
       results.push({ ok: false, error: e.message });
     }

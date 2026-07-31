@@ -95,24 +95,34 @@
           <input v-model="tagsInput" type="text" placeholder="Procreate, 角色设计, 数字绘画"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
-        <!-- Image URL -->
+        <!-- Image Upload -->
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">作品图片 URL（jpg/png/webp/gif）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">作品图片（jpg / png / webp / gif）</label>
+          <div class="flex items-center gap-3">
+            <input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/svg+xml"
+              @change="onFileChange($event, 'image', 'artworks')"
+              class="block w-full text-sm text-gray-400 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:bg-gradient-to-r file:from-neon-cyan file:to-neon-purple file:text-bg-dark file:font-bold file:cursor-pointer file:hover:scale-105 file:transition-transform" />
+            <span v-if="uploading.image" class="text-xs text-neon-cyan whitespace-nowrap">上传中...</span>
+          </div>
+          <p class="text-xs text-gray-600 mt-2">或粘贴图片链接：</p>
           <input v-model="form.image" type="text" placeholder="https://example.com/artwork.jpg"
-            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
-          <p class="text-xs text-gray-600 mt-1">填写图片链接，支持 jpg / png / webp / gif 等格式</p>
-          <!-- Preview -->
+            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none mt-1" />
           <div v-if="form.image" class="mt-2 rounded-xl overflow-hidden h-32 bg-white/5">
             <img :src="form.image" class="w-full h-full object-cover" @error="onImgError" />
           </div>
         </div>
-        <!-- Video URL -->
+        <!-- Video Upload -->
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">作品视频 URL（mp4/webm/mov）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">作品视频（可选，mp4 / webm / mov）</label>
+          <div class="flex items-center gap-3">
+            <input type="file" accept="video/mp4,video/webm,video/quicktime"
+              @change="onFileChange($event, 'video', 'videos')"
+              class="block w-full text-sm text-gray-400 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:bg-gradient-to-r file:from-neon-cyan file:to-neon-purple file:text-bg-dark file:font-bold file:cursor-pointer file:hover:scale-105 file:transition-transform" />
+            <span v-if="uploading.video" class="text-xs text-neon-cyan whitespace-nowrap">上传中...</span>
+          </div>
+          <p class="text-xs text-gray-600 mt-2">或粘贴视频链接：</p>
           <input v-model="form.video" type="text" placeholder="https://example.com/process.mp4"
-            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
-          <p class="text-xs text-gray-600 mt-1">填写视频链接，支持 mp4 / webm / mov 等格式（可留空）</p>
-          <!-- Preview -->
+            class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none mt-1" />
           <div v-if="form.video" class="mt-2 rounded-xl overflow-hidden h-32 bg-white/5">
             <video :src="form.video" class="w-full h-full object-cover" muted controls />
           </div>
@@ -152,9 +162,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, reactive } from 'vue'
 import { useData, useAdmin } from '../../composables/useData.js'
-import { syncSchema } from '../../lib/api.js'
+import { syncSchema, uploadFile } from '../../lib/api.js'
 
 const { state } = useData()
 const { addProject, updateProject, deleteProject } = useAdmin()
@@ -164,6 +174,7 @@ const saving = ref(false)
 const error = ref('')
 const syncing = ref(false)
 const tagsInput = ref('')
+const uploading = reactive({ image: false, video: false })
 
 async function syncTable() {
   syncing.value = true
@@ -213,6 +224,24 @@ function startEdit(project) {
 
 function onImgError(e) {
   e.target.style.display = 'none'
+}
+
+function onFileChange(e, field, folder) {
+  const file = e.target.files?.[0]
+  e.target.value = '' // 允许再次选择同一文件
+  if (!file) return
+  uploadToField(file, field, folder)
+}
+
+async function uploadToField(file, field, folder) {
+  uploading[field] = true
+  try {
+    const url = await uploadFile(file, folder)
+    form.value[field] = url
+  } catch (err) {
+    alert('上传失败: ' + (err.message || err))
+  }
+  uploading[field] = false
 }
 
 async function handleSave() {

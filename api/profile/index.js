@@ -15,6 +15,11 @@ export async function PUT(request) {
   if (!verifyAdmin(request)) return unauthorized();
   try {
     const body = await request.json();
+    // social_links 接收数组或字符串，统一存为 JSON 字符串
+    let socialLinks = body.social_links;
+    if (Array.isArray(socialLinks)) socialLinks = JSON.stringify(socialLinks);
+    if (typeof socialLinks !== 'string') socialLinks = '[]';
+
     const { rows } = await sql`
       UPDATE profile SET
         name_zh = ${body.name_zh || ''},
@@ -33,6 +38,7 @@ export async function PUT(request) {
         years_exp = ${body.years_exp || 0},
         projects_count = ${body.projects_count || 0},
         clients_count = ${body.clients_count || 0},
+        social_links = ${socialLinks},
         updated_at = NOW()
       WHERE id = ${body.id}
       RETURNING *

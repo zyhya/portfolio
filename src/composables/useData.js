@@ -1,10 +1,9 @@
-import { reactive } from 'vue'
+import { reactive, computed } from 'vue'
 import { i18n } from '../i18n.js'
 import {
   fetchProfile, saveProfile,
   fetchProjects, createProject, updateProject, deleteProject,
   fetchSkills, createSkill, updateSkill, deleteSkill,
-  fetchSocialLinks, createSocial, updateSocial, deleteSocial,
   fetchContactMessages, updateContactMessage, markAllContactMessagesRead, deleteContactMessage,
   initData,
 } from '../lib/api.js'
@@ -15,8 +14,20 @@ const state = reactive({
   profile: null,
   projects: [],
   skills: [],
-  socials: [],
   contactMessages: [],
+})
+
+/** 从 profile.social_links（JSON 字符串）解析出社交链接数组 */
+const socialLinks = computed(() => {
+  if (!state.profile || !state.profile.social_links) return []
+  try {
+    const parsed = typeof state.profile.social_links === 'string'
+      ? JSON.parse(state.profile.social_links)
+      : state.profile.social_links
+    return Array.isArray(parsed) ? parsed : []
+  } catch {
+    return []
+  }
 })
 
 /** 将 API 数据合并到 i18n 翻译对象（中英双语） */
@@ -36,6 +47,7 @@ function mergeToI18n() {
     t.contact.email = p.email
     t.contact.phone = p.phone
     t.about.location = i18n.locale === 'zh' ? p.location_zh : p.location_en
+    t.about.avatar = p.avatar
   }
   // projects
   if (state.projects.length) {
@@ -63,8 +75,8 @@ function mergeToI18n() {
     }))
   }
   // socials
-  if (state.socials.length) {
-    t.contact.socials = state.socials.map(s => ({
+  if (socialLinks.value.length) {
+    t.contact.socials = socialLinks.value.map(s => ({
       name: s.name,
       url: s.url,
       icon: s.icon,
@@ -77,17 +89,15 @@ async function fetchAll() {
   state.loading = true
   state.error = null
   try {
-    const [profile, projects, skills, socials, contactMessages] = await Promise.all([
+    const [profile, projects, skills, contactMessages] = await Promise.all([
       fetchProfile().catch(() => null),
       fetchProjects().catch(() => []),
       fetchSkills().catch(() => []),
-      fetchSocialLinks().catch(() => []),
       fetchContactMessages().catch(() => []),
     ])
     state.profile = profile
     state.projects = projects || []
     state.skills = skills || []
-    state.socials = socials || []
     state.contactMessages = contactMessages || []
     mergeToI18n()
   } catch (e) {
@@ -110,6 +120,7 @@ async function initializeData() {
 export function useData() {
   return {
     state,
+    socialLinks,
     fetchAll,
     initializeData,
   }
@@ -163,26 +174,6 @@ export function useAdmin() {
     removeSkill: async (id) => {
       await deleteSkill(id)
       state.skills = state.skills.filter(s => s.id !== id)
-      mergeToI18n()
-    },
-    // Social
-    getSocials: () => state.socials,
-    addSocial: async (data) => {
-      const created = await createSocial(data)
-      state.socials.push(created)
-      mergeToI18n()
-      return created
-    },
-    editSocial: async (id, data) => {
-      const updated = await updateSocial(id, data)
-      const idx = state.socials.findIndex(s => s.id === id)
-      if (idx >= 0) state.socials[idx] = updated
-      mergeToI18n()
-      return updated
-    },
-    removeSocial: async (id) => {
-      await deleteSocial(id)
-      state.socials = state.socials.filter(s => s.id !== id)
       mergeToI18n()
     },
     // Contact Messages

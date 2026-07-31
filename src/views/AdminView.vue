@@ -65,7 +65,7 @@
             <div class="text-xs text-gray-500 font-mono">技能数量</div>
           </div>
           <div class="glass-card rounded-2xl p-6">
-            <div class="text-3xl font-black gradient-text mb-1">{{ state.socials.length }}</div>
+            <div class="text-3xl font-black gradient-text mb-1">{{ socialLinks.length }}</div>
             <div class="text-xs text-gray-500 font-mono">社交链接</div>
           </div>
           <div class="glass-card rounded-2xl p-6">
@@ -79,7 +79,6 @@
       <ProjectManager v-else-if="activeTab === 'projects'" />
       <SkillManager v-else-if="activeTab === 'skills'" />
       <ProfileEditor v-else-if="activeTab === 'profile'" />
-      <SocialManager v-else-if="activeTab === 'social'" />
       <ContactManager v-else-if="activeTab === 'contact'" />
     </main>
   </div>
@@ -93,11 +92,10 @@ import { adminSignOut, syncSchema } from '../lib/api.js'
 import ProjectManager from '../components/admin/ProjectManager.vue'
 import SkillManager from '../components/admin/SkillManager.vue'
 import ProfileEditor from '../components/admin/ProfileEditor.vue'
-import SocialManager from '../components/admin/SocialManager.vue'
 import ContactManager from '../components/admin/ContactManager.vue'
 
 const router = useRouter()
-const { state, fetchAll } = useData()
+const { state, fetchAll, socialLinks } = useData()
 const { initializeData } = useAdmin()
 const loadingData = ref(true)
 const seeding = ref(false)
@@ -110,7 +108,6 @@ const tabs = [
   { id: 'projects', label: '作品管理', icon: '📁' },
   { id: 'skills', label: '技能管理', icon: '💡' },
   { id: 'profile', label: '个人信息', icon: '👤' },
-  { id: 'social', label: '社交链接', icon: '🔗' },
   { id: 'contact', label: '联系信息', icon: '✉️' },
 ]
 

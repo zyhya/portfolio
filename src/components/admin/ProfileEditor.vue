@@ -7,6 +7,21 @@
     </div>
 
     <div v-else class="glass-card rounded-2xl p-6 max-w-2xl space-y-5">
+      <!-- 头像上传 -->
+      <div class="flex items-center gap-4">
+        <div class="w-20 h-20 rounded-2xl overflow-hidden bg-gradient-to-br from-neon-cyan/20 to-neon-purple/20 flex items-center justify-center text-3xl flex-shrink-0">
+          <img v-if="form.avatar" :src="form.avatar" class="w-full h-full object-cover" />
+          <span v-else>🎨</span>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-500 font-mono mb-2">头像</label>
+          <input type="file" accept="image/jpeg,image/png,image/webp,image/gif"
+            @change="onAvatarChange"
+            class="block text-sm text-gray-400 file:mr-3 file:px-4 file:py-2.5 file:rounded-xl file:border-0 file:bg-gradient-to-r file:from-neon-cyan file:to-neon-purple file:text-bg-dark file:font-bold file:cursor-pointer file:hover:scale-105 file:transition-transform" />
+          <span v-if="uploadingAvatar" class="text-xs text-neon-cyan mt-1 block">上传中...</span>
+        </div>
+      </div>
+
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">姓名（中文）</label>
@@ -83,6 +98,25 @@
         </div>
       </div>
 
+      <!-- 社交链接编辑 -->
+      <div class="pt-4 border-t border-white/5">
+        <div class="flex items-center justify-between mb-3">
+          <label class="text-xs text-gray-500 font-mono">社交链接</label>
+          <button @click="addLink" class="text-xs text-neon-cyan hover:underline">+ 添加链接</button>
+        </div>
+        <div v-for="(link, idx) in links" :key="idx" class="grid grid-cols-12 gap-2 mb-2 items-center">
+          <input v-model="link.icon" placeholder="🔗"
+            class="col-span-1 px-2 py-2 rounded-lg bg-white/5 border border-white/10 text-center text-white" />
+          <input v-model="link.name" placeholder="名称"
+            class="col-span-4 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <input v-model="link.url" placeholder="链接 URL"
+            class="col-span-6 px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <button @click="removeLink(idx)"
+            class="col-span-1 px-2 py-2 rounded-lg text-neon-pink hover:bg-neon-pink/10 transition-colors text-center">✕</button>
+        </div>
+        <p v-if="!links.length" class="text-xs text-gray-600">暂无社交链接，点击「+ 添加链接」</p>
+      </div>
+
       <div class="grid grid-cols-3 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">年经验</label>
@@ -115,6 +149,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useData, useAdmin } from '../../composables/useData.js'
+import { uploadFile } from '../../lib/api.js'
 
 const { state } = useData()
 const { saveProfile } = useAdmin()
@@ -122,14 +157,47 @@ const { saveProfile } = useAdmin()
 const saving = ref(false)
 const error = ref('')
 const saved = ref(false)
+const uploadingAvatar = ref(false)
+const links = ref([])
 
 const form = ref({})
+
+function parseSocialLinks(raw) {
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw || '[]') : (raw || [])
+    return Array.isArray(arr) ? arr.map(l => ({ ...l })) : []
+  } catch {
+    return []
+  }
+}
 
 onMounted(() => {
   if (state.profile) {
     form.value = { ...state.profile }
+    links.value = parseSocialLinks(state.profile.social_links)
   }
 })
+
+async function onAvatarChange(e) {
+  const file = e.target.files?.[0]
+  e.target.value = ''
+  if (!file) return
+  uploadingAvatar.value = true
+  try {
+    form.value.avatar = await uploadFile(file, 'avatars')
+  } catch (err) {
+    alert('头像上传失败: ' + (err.message || err))
+  }
+  uploadingAvatar.value = false
+}
+
+function addLink() {
+  links.value.push({ name: '', url: '', icon: '🔗' })
+}
+
+function removeLink(idx) {
+  links.value.splice(idx, 1)
+}
 
 async function handleSave() {
   saving.value = true
@@ -153,6 +221,8 @@ async function handleSave() {
       years_exp: form.value.years_exp || 0,
       projects_count: form.value.projects_count || 0,
       clients_count: form.value.clients_count || 0,
+      avatar: form.value.avatar || '',
+      social_links: JSON.stringify(links.value.filter(l => l.name || l.url)),
     })
     saved.value = true
     setTimeout(() => { saved.value = false }, 3000)

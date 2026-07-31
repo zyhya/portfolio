@@ -1,6 +1,7 @@
 /**
  * REST API 客户端 — 对接 Vercel Serverless Functions
  */
+import { upload } from '@vercel/blob/client'
 
 /** API 基础地址（开发环境空字符串 = 同源，生产环境也是同源因为前端和 API 部署在同一域名） */
 const API_BASE = import.meta.env.VITE_API_BASE || ''
@@ -133,24 +134,6 @@ export async function deleteSkill(id) {
   return request(`/api/skills/${id}`, { method: 'DELETE' })
 }
 
-// ============ Social Links ============
-
-export async function fetchSocialLinks() {
-  return request('/api/social')
-}
-
-export async function createSocial(data) {
-  return request('/api/social', { method: 'POST', body: JSON.stringify(data) })
-}
-
-export async function updateSocial(id, data) {
-  return request(`/api/social/${id}`, { method: 'PUT', body: JSON.stringify(data) })
-}
-
-export async function deleteSocial(id) {
-  return request(`/api/social/${id}`, { method: 'DELETE' })
-}
-
 // ============ Contact Messages ============
 
 export async function fetchContactMessages() {
@@ -181,4 +164,26 @@ export async function initData() {
 
 export async function syncSchema() {
   return request('/api/init', { method: 'POST', body: JSON.stringify({ syncOnly: true }) })
+}
+
+// ============ 文件上传（Vercel Blob 客户端直传）============
+
+/**
+ * 上传本地文件到 Vercel Blob，返回可公开访问的 URL。
+ * 支持图片（jpg/png/webp/gif/svg）与视频（mp4/webm/mov）。
+ * 上传授权由 /api/blob（仅管理员）颁发，自动携带登录 token。
+ * @param {File} file 本地文件
+ * @param {string} folder 存储目录，如 'artworks' / 'avatars'
+ */
+export async function uploadFile(file, folder = 'artworks') {
+  const ext = (file.name.split('.').pop() || 'bin').toLowerCase()
+  const safeName = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`
+  const pathname = `${folder}/${safeName}`
+  const token = getToken()
+  const blob = await upload(pathname, file, {
+    access: 'public',
+    handleUploadUrl: '/api/blob',
+    headers: token ? { authorization: `Bearer ${token}` } : undefined,
+  })
+  return blob.url
 }
