@@ -3,8 +3,8 @@ import { sql, verifyAdmin, jsonResponse, errorResponse, unauthorized } from '../
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS profile (
   id SERIAL PRIMARY KEY,
-  name_zh TEXT DEFAULT '韩敬文',
-  name_en TEXT DEFAULT 'Jingwen Han',
+  name_zh TEXT DEFAULT '以瀚丫',
+  name_en TEXT DEFAULT 'Hanya Yi',
   title_zh TEXT DEFAULT '插画师',
   title_en TEXT DEFAULT 'Illustrator',
   tagline_zh TEXT DEFAULT '用画笔描绘世界，用色彩讲述故事',
@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS contact_messages (
 
 const DEFAULT_DATA = `
 INSERT INTO profile (name_zh, name_en, title_zh, title_en, tagline_zh, tagline_en, bio_zh, bio_en, email, phone, location_zh, location_en, years_exp, projects_count, clients_count, social_links)
-SELECT '韩敬文', 'Jingwen Han', '插画师', 'Illustrator', '用画笔描绘世界，用色彩讲述故事', 'Painting worlds with brushstrokes, telling stories with colors', '5年插画创作经验，专注于角色设计与场景插画。热爱艺术，追求独特的视觉表达。', '5 years of illustration experience, specializing in character design and scene illustration.', 'contact@example.com', '+86 138 0000 0000', '中国 · 北京', 'Beijing, China', 5, 200, 50,
+SELECT '以瀚丫', 'Hanya Yi', '插画师', 'Illustrator', '用画笔描绘世界，用色彩讲述故事', 'Painting worlds with brushstrokes, telling stories with colors', '5年插画创作经验，专注于角色设计与场景插画。热爱艺术，追求独特的视觉表达。', '5 years of illustration experience, specializing in character design and scene illustration.', 'contact@example.com', '+86 138 0000 0000', '中国 · 北京', 'Beijing, China', 5, 200, 50,
 '[{"name":"Behance","url":"https://behance.net","icon":"🎨","sort_order":1},{"name":"ArtStation","url":"https://artstation.com","icon":"🖼️","sort_order":2},{"name":"Instagram","url":"https://instagram.com","icon":"📸","sort_order":3},{"name":"微博","url":"https://weibo.com","icon":"📱","sort_order":4}]'
 WHERE NOT EXISTS (SELECT 1 FROM profile);
 

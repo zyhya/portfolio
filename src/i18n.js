@@ -13,7 +13,7 @@ const translations = reactive({
     // Hero
     hero: {
       greeting: '你好，我是',
-      name: '韩敬文',
+      name: '以瀚丫',
       roles: ['插画师', '角色设计师', '场景插画师', '概念艺术家'],
       subtitle: '用画笔描绘世界，用色彩讲述故事',
       cta1: '查看作品',
@@ -170,7 +170,7 @@ const translations = reactive({
     },
     hero: {
       greeting: "Hi, I'm",
-      name: 'Jingwen Han',
+      name: 'Hanya Yi',
       roles: ['Illustrator', 'Character Designer', 'Scene Illustrator', 'Concept Artist'],
       subtitle: 'Painting worlds with brushstrokes, telling stories with colors',
       cta1: 'View My Work',

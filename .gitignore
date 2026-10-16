@@ -25,3 +25,5 @@ deploy-api.mjs
 
 # 本地环境变量示例占位（真实 .env 已排除）
 .env.example
+.vercel
+.env*
