@@ -160,6 +160,22 @@ export async function initData() {
   return request('/api/init', { method: 'POST' })
 }
 
+// ============ 翻译 ============
+
+/**
+ * 调用百度翻译 API，把中文文本翻译成英文（默认）
+ * @param {string} text 待翻译文本
+ * @param {string} from 源语言（默认 zh）
+ * @param {string} to 目标语言（默认 en）
+ * @returns {Promise<{translated: string}>}
+ */
+export async function translateText(text, from = 'zh', to = 'en') {
+  return request('/api/translate', {
+    method: 'POST',
+    body: JSON.stringify({ text, from, to }),
+  })
+}
+
 // ============ Schema Sync ============
 
 export async function syncSchema() {

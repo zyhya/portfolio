@@ -22,14 +22,23 @@
         </div>
       </div>
 
+      <!-- 翻译提示 -->
+      <div v-if="translateError" class="text-sm text-neon-pink bg-neon-pink/10 rounded-lg px-4 py-2">
+        {{ translateError }}
+      </div>
+
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">姓名（中文）</label>
-          <input v-model="form.name_zh" type="text"
+          <input v-model="form.name_zh" type="text" @blur="autoTranslate('name_en')"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none" />
+          <span class="text-xs text-gray-600 mt-1 block">失焦自动翻译</span>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">姓名（英文）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">
+            姓名（英文）
+            <span v-if="translating.name_en" class="text-neon-cyan ml-2">翻译中...</span>
+          </label>
           <input v-model="form.name_en" type="text"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none" />
         </div>
@@ -38,11 +47,15 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">职业头衔（中文）</label>
-          <input v-model="form.title_zh" type="text" placeholder="插画师"
+          <input v-model="form.title_zh" type="text" placeholder="插画师" @blur="autoTranslate('title_en')"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <span class="text-xs text-gray-600 mt-1 block">失焦自动翻译</span>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">职业头衔（英文）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">
+            职业头衔（英文）
+            <span v-if="translating.title_en" class="text-neon-cyan ml-2">翻译中...</span>
+          </label>
           <input v-model="form.title_en" type="text" placeholder="Illustrator"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
@@ -51,23 +64,33 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">一句话标语（中文）</label>
-          <input v-model="form.tagline_zh" type="text" placeholder="用画笔描绘世界，用色彩讲述故事"
+          <input v-model="form.tagline_zh" type="text" placeholder="用画笔描绘世界，用色彩讲述故事" @blur="autoTranslate('tagline_en')"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <span class="text-xs text-gray-600 mt-1 block">失焦自动翻译</span>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">一句话标语（英文）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">
+            一句话标语（英文）
+            <span v-if="translating.tagline_en" class="text-neon-cyan ml-2">翻译中...</span>
+          </label>
           <input v-model="form.tagline_en" type="text" placeholder="Painting worlds with brushstrokes, telling stories with colors"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
       </div>
 
       <div>
-        <label class="block text-xs text-gray-500 font-mono mb-2">个人简介（中文）</label>
-        <textarea v-model="form.bio_zh" rows="3"
+        <label class="block text-xs text-gray-500 font-mono mb-2">
+          个人简介（中文）
+          <span class="text-gray-600 ml-2">失焦自动翻译</span>
+        </label>
+        <textarea v-model="form.bio_zh" rows="3" @blur="autoTranslate('bio_en')"
           class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none resize-none"></textarea>
       </div>
       <div>
-        <label class="block text-xs text-gray-500 font-mono mb-2">个人简介（英文）</label>
+        <label class="block text-xs text-gray-500 font-mono mb-2">
+          个人简介（英文）
+          <span v-if="translating.bio_en" class="text-neon-cyan ml-2">翻译中...</span>
+        </label>
         <textarea v-model="form.bio_en" rows="3"
           class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white focus:border-neon-cyan/50 focus:outline-none resize-none"></textarea>
       </div>
@@ -75,11 +98,15 @@
       <div class="grid grid-cols-2 gap-4">
         <div>
           <label class="block text-xs text-gray-500 font-mono mb-2">所在地（中文）</label>
-          <input v-model="form.location_zh" type="text" placeholder="中国 · 北京"
+          <input v-model="form.location_zh" type="text" placeholder="中国 · 北京" @blur="autoTranslate('location_en')"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
+          <span class="text-xs text-gray-600 mt-1 block">失焦自动翻译</span>
         </div>
         <div>
-          <label class="block text-xs text-gray-500 font-mono mb-2">所在地（英文）</label>
+          <label class="block text-xs text-gray-500 font-mono mb-2">
+            所在地（英文）
+            <span v-if="translating.location_en" class="text-neon-cyan ml-2">翻译中...</span>
+          </label>
           <input v-model="form.location_en" type="text" placeholder="Beijing, China"
             class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-600 focus:border-neon-cyan/50 focus:outline-none" />
         </div>
@@ -149,7 +176,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useData, useAdmin } from '../../composables/useData.js'
-import { uploadFile } from '../../lib/api.js'
+import { uploadFile, translateText } from '../../lib/api.js'
 
 const { state } = useData()
 const { saveProfile } = useAdmin()
@@ -160,7 +187,41 @@ const saved = ref(false)
 const uploadingAvatar = ref(false)
 const links = ref([])
 
+// 翻译状态：每个英文字段独立 loading
+const translating = ref({
+  name_en: false,
+  title_en: false,
+  tagline_en: false,
+  bio_en: false,
+  location_en: false,
+})
+const translateError = ref('')
+
 const form = ref({})
+
+// 中文失焦自动翻译到对应英文框
+// enField: 'name_en' / 'title_en' / 'tagline_en' / 'bio_en' / 'location_en'
+async function autoTranslate(enField) {
+  const zhField = enField.replace('_en', '_zh')
+  const text = (form.value[zhField] || '').toString().trim()
+  if (!text) return // 中文为空不触发
+  translating.value[enField] = true
+  translateError.value = ''
+  try {
+    const data = await translateText(text)
+    if (data.translated) {
+      form.value[enField] = data.translated
+    } else {
+      translateError.value = `${enField} 翻译未返回结果`
+      setTimeout(() => { translateError.value = '' }, 3000)
+    }
+  } catch (e) {
+    translateError.value = `${enField} 翻译失败: ${e.message}`
+    setTimeout(() => { translateError.value = '' }, 5000)
+  } finally {
+    translating.value[enField] = false
+  }
+}
 
 function parseSocialLinks(raw) {
   try {
