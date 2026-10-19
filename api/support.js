@@ -1,6 +1,7 @@
 import { neon } from '@neondatabase/serverless';
 import jwt from 'jsonwebtoken';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { generateAnswer } from '../server/ai.js';
 
 let ready;
 function database() {
@@ -17,6 +18,7 @@ async function init(sql) {
     await sql`CREATE TABLE IF NOT EXISTS support_tickets (id SERIAL PRIMARY KEY, province TEXT NOT NULL, platform TEXT NOT NULL, question TEXT NOT NULL, author TEXT NOT NULL, resolved BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS answer TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_entries ADD COLUMN IF NOT EXISTS ticket_id INT UNIQUE`;
+    await sql`CREATE TABLE IF NOT EXISTS support_ai_usage (username TEXT PRIMARY KEY, started TIMESTAMPTZ NOT NULL DEFAULT NOW(), calls INT NOT NULL DEFAULT 0)`;
     await sql`CREATE TABLE IF NOT EXISTS support_attempts (username TEXT PRIMARY KEY, failures INT NOT NULL, started TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
   })().catch(e => { ready = null; throw e; });
   await ready;
@@ -84,6 +86,16 @@ export async function handler(request) {
     return result;
   }
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
+  if(action==='answer'&&write){
+    if(!['platform','question'].every(k=>typeof body[k]==='string'&&body[k].trim()&&body[k].length<=2000))return response({error:'请填写平台和问题'},400);
+    const platform=body.platform.trim(),question=body.question.trim();
+    const tickets=await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${platform},${question},${user.username}) RETURNING id`;
+    const ticketId=tickets[0].id;
+    const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
+    if(usage[0].calls>10)return response({mode:'fallback',ticketId,notice:'请求较频繁，问题已登记，暂用知识库匹配。'});
+    const rows=await sql`SELECT id,question,answer,keywords,source FROM support_entries WHERE platform=${platform} AND published=TRUE ORDER BY updated_at DESC`;
+    return response({ticketId,...await generateAnswer({platform,question,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL})});
+  }
   if(action==='tickets'){
     if(!write)return response(await sql`SELECT * FROM support_tickets ORDER BY resolved ASC,created_at DESC`);
     if(body.id){

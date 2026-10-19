@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {generateAnswer,selectContext} from '../server/ai.js';
+const rows=[{id:1,question:'密码找回',answer:'点击忘记密码',keywords:'密码',source:'手册'}];
+const base={rows,question:'密码忘了',platform:'A',key:'test-only'};
+test('未配置及空知识不调用模型',async()=>{const fetcher=()=>{throw Error('不应调用')};assert.equal((await generateAnswer({...base,key:'',fetcher})).mode,'fallback');assert.equal((await generateAnswer({...base,rows:[],fetcher})).mode,'insufficient')});
+test('验证来源并使用服务端配置，不保存响应',async()=>{const fetcher=async(url,opts)=>{assert.equal(url,'https://api.openai.com/v1/responses');const b=JSON.parse(opts.body);assert.equal(b.store,false);assert.equal(b.model,'test-model');return {ok:true,json:async()=>({status:'completed',output:[{content:[{type:'output_text',text:JSON.stringify({sufficient:true,answer:'请点击忘记密码',source_ids:[1]})}]}]})}};assert.equal((await generateAnswer({...base,model:'test-model',fetcher})).mode,'ai')});
+test('未知来源不能当作可信答案',async()=>{const fetcher=async()=>({ok:true,json:async()=>({output:[{content:[{type:'output_text',text:JSON.stringify({sufficient:true,answer:'猜测',source_ids:[999]})}]}]})});assert.equal((await generateAnswer({...base,fetcher})).mode,'fallback')});
+test('额度错误和超时回退',async()=>{assert.equal((await generateAnswer({...base,fetcher:async()=>({ok:false,status:429})})).mode,'fallback');assert.equal((await generateAnswer({...base,fetcher:async()=>{throw Error('timeout')}})).mode,'fallback')});
+test('限制资料上下文长度',()=>{const items=Array.from({length:100},(_,id)=>({...rows[0],id,answer:'文'.repeat(10000)}));assert.ok(selectContext(items,'密码').reduce((n,e)=>n+e.answer.length+e.question.length,0)<=31000)});
