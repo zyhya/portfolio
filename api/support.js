@@ -20,6 +20,7 @@ async function init(sql) {
   await ready;
 }
 const response = (data, status=200) => new Response(JSON.stringify(data), {status, headers:{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store'}});
+export function validPassword(value){return typeof value==='string'&&value.length>=12&&value.length<=256;}
 export function hashPassword(value, salt=randomBytes(16).toString('hex')) {return salt+':'+scryptSync(value,salt,64).toString('hex');}
 function equal(a,b) {const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
 export function validEntry(e) {return e && ['province','platform','question','answer'].every(k=>typeof e[k]==='string'&&e[k].trim()&&e[k].length<=(k==='answer'?30000:1000))&&(!e.keywords||typeof e.keywords==='string'&&e.keywords.length<=2000)&&(!e.source||typeof e.source==='string'&&e.source.length<=1000);}
@@ -39,7 +40,9 @@ export async function handler(request) {
     const attempts=await sql`SELECT * FROM support_attempts WHERE username=${username}`;
     if(attempts[0]?.failures>=8&&Date.now()-new Date(attempts[0].started).getTime()<900000)return response({error:'尝试过多，请 15 分钟后再试'},429);
     let role='staff',ok=false,version=0;
-    if(username===process.env.ADMIN_USERNAME){role='admin';ok=equal(password,process.env.ADMIN_PASSWORD)}else{const users=await sql`SELECT password,role,version FROM support_users WHERE username=${username} AND active=TRUE`;if(users[0]){ok=equal(hashPassword(password,users[0].password.split(':')[0]),users[0].password);role=users[0].role;version=users[0].version}}
+    const accounts=await sql`SELECT password,role,version,active FROM support_users WHERE username=${username}`;
+    if(accounts[0]){const a=accounts[0];ok=a.active&&equal(hashPassword(password,a.password.split(':')[0]),a.password);role=username===process.env.ADMIN_USERNAME?'admin':a.role;version=a.version}
+    else if(username===process.env.ADMIN_USERNAME){role='admin';ok=equal(password,process.env.ADMIN_PASSWORD)}
     if(!ok){await sql`INSERT INTO support_attempts (username,failures) VALUES (${username},1) ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN support_attempts.started<NOW()-INTERVAL '15 minutes' THEN 1 ELSE support_attempts.failures+1 END, started=CASE WHEN support_attempts.started<NOW()-INTERVAL '15 minutes' THEN NOW() ELSE support_attempts.started END`;return response({error:'账号或密码错误'},401)}
     await sql`DELETE FROM support_attempts WHERE username=${username}`;
     if(body.adminLogin&&role!=='admin')return response({error:'此入口仅限管理员，请使用客服端登录'},403);
@@ -47,10 +50,37 @@ export async function handler(request) {
     const result=response({user:{username,role}});result.headers.set('Set-Cookie',`support_session=${token}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=28800`);return result;
   }
   let user;try{const token=(request.headers.get('cookie')||'').split(';').map(s=>s.trim()).find(s=>s.startsWith('support_session='))?.slice(16);user=jwt.verify(token,secret,{audience:'support',algorithms:['HS256']})}catch{return response({error:'请登录'},401)}
-  if(user.username!==process.env.ADMIN_USERNAME){const users=await sql`SELECT active,role,version FROM support_users WHERE username=${user.username}`;if(!users[0]?.active||users[0].version!==user.version)return response({error:'登录已失效，请重新登录'},401);user.role=users[0].role}
+  const accountRows=await sql`SELECT active,role,version,password FROM support_users WHERE username=${user.username}`;
+  const currentAccount=accountRows[0];
+  if(currentAccount){if(!currentAccount.active||currentAccount.version!==user.version)return response({error:'登录已失效，请重新登录'},401);user.role=user.username===process.env.ADMIN_USERNAME?'admin':currentAccount.role}
+  else if(user.username!==process.env.ADMIN_USERNAME||user.version!==0)return response({error:'登录已失效，请重新登录'},401);
   if(write){const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)return response({error:'请求来源无效'},403)}
   if(action==='me')return response({user:{username:user.username,role:user.role}});
   if(action==='logout'){const r=response({ok:true});r.headers.set('Set-Cookie','support_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');return r}
+  if(action==='password'&&write){
+    const target=body.username;
+    if(typeof target!=='string'||!target.trim())return response({error:'账号无效'},400);
+    const own=target===user.username;
+    if(!own&&(user.role!=='admin'||target===process.env.ADMIN_USERNAME))return response({error:'无权重置此账号密码'},403);
+    if(!validPassword(body.password)||body.password!==body.confirmPassword)return response({error:'新密码需 12 至 256 位，且两次输入一致'},400);
+    if(own){
+      if(typeof body.currentPassword!=='string'||body.currentPassword.length>256)return response({error:'请输入当前密码'},400);
+      const attempts=await sql`SELECT * FROM support_attempts WHERE username=${'change:'+target}`;
+      if(attempts[0]?.failures>=8&&Date.now()-new Date(attempts[0].started).getTime()<900000)return response({error:'尝试过多，请 15 分钟后再试'},429);
+      const ok=currentAccount?equal(hashPassword(body.currentPassword,currentAccount.password.split(':')[0]),currentAccount.password):equal(body.currentPassword,process.env.ADMIN_PASSWORD);
+      if(!ok){await sql`INSERT INTO support_attempts(username,failures) VALUES(${'change:'+target},1) ON CONFLICT(username) DO UPDATE SET failures=CASE WHEN support_attempts.started<NOW()-INTERVAL '15 minutes' THEN 1 ELSE support_attempts.failures+1 END,started=CASE WHEN support_attempts.started<NOW()-INTERVAL '15 minutes' THEN NOW() ELSE support_attempts.started END`;return response({error:'当前密码不正确'},400)}
+      if(body.password===body.currentPassword)return response({error:'新密码不能与当前密码相同'},400);
+    }
+    const targets=await sql`SELECT username FROM support_users WHERE username=${target}`;
+    if(!targets.length&&!(own&&target===process.env.ADMIN_USERNAME))return response({error:'账号不存在'},404);
+    await sql.transaction([
+      sql`INSERT INTO support_users(username,password,role,version) VALUES(${target},${hashPassword(body.password)},'admin',1) ON CONFLICT(username) DO UPDATE SET password=EXCLUDED.password,version=support_users.version+1`,
+      sql`DELETE FROM support_attempts WHERE username=${target} OR username=${'change:'+target}`
+    ]);
+    const result=response({ok:true,reauthenticate:own});
+    if(own)result.headers.set('Set-Cookie','support_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');
+    return result;
+  }
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
   if(action==='tickets'){
     if(!write)return response(await sql`SELECT * FROM support_tickets ORDER BY created_at DESC LIMIT 500`);

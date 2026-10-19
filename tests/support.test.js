@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {searchEntries,splitDocument} from '../src/support-model.js';
-import {validEntry,hashPassword,handler} from '../api/support.js';
+import {validEntry,hashPassword,handler,validPassword} from '../api/support.js';
+test('密码长度边界与类型校验',()=>{assert.equal(validPassword('a'.repeat(11)),false);assert.equal(validPassword('a'.repeat(12)),true);assert.equal(validPassword('a'.repeat(256)),true);assert.equal(validPassword('a'.repeat(257)),false);assert.equal(validPassword(null),false);assert.equal(validPassword(123456789012),false)});
 const sample={province:'湖南',platform:'A',question:'学时未更新怎么办',keywords:'学时,进度',answer:'刷新后截图核查',published:true};
 test('检索隔离省份、平台及未审核草稿',()=>{const rows=[sample,{...sample,province:'广东'},{...sample,platform:'B'},{...sample,published:false}];assert.equal(searchEntries(rows,'湖南','A','看完了但是学时没有变化').length,1);assert.equal(searchEntries(rows,'湖南','A','退费').length,0);assert.equal(searchEntries(rows,'','A','学时').length,0)});
 test('问答文档保留多行答案，导入默认为草稿',()=>{const result=splitDocument('问：如何登录\n答：打开平台\n输入账号\n问题：如何查进度\n答案：打开学习记录','操作.docx');assert.equal(result.length,2);assert.equal(result[0].answer,'打开平台\n输入账号');assert.equal(result[1].published,false);assert.equal(splitDocument('普通操作手册','手册').length,0)});
