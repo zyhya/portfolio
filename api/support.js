@@ -87,10 +87,11 @@ export async function handler(request) {
   }
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
   if(action==='answer'&&write){
-    if(!['platform','question'].every(k=>typeof body[k]==='string'&&body[k].trim()&&body[k].length<=2000))return response({error:'请填写平台和问题'},400);
-    const platform=body.platform.trim(),question=body.question.trim();
+    if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||(body.platform!=null&&(typeof body.platform!=='string'||body.platform.length>1000)))return response({error:'请填写有效问题'},400);
+    const platform=(body.platform||'').trim(),question=body.question.trim();
     const tickets=await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${platform},${question},${user.username}) RETURNING id`;
     const ticketId=tickets[0].id;
+    if(!platform)return response({mode:'insufficient',ticketId,notice:'问题已提交到待处理列表；未指定平台，等待管理员确认平台后回复。'});
     const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
     if(usage[0].calls>10)return response({mode:'fallback',ticketId,notice:'请求较频繁，问题已登记，暂用知识库匹配。'});
     const rows=await sql`SELECT id,question,answer,keywords,source FROM support_entries WHERE platform=${platform} AND published=TRUE ORDER BY updated_at DESC`;
@@ -102,14 +103,15 @@ export async function handler(request) {
       if(user.role!=='admin')return response({error:'需要管理员权限'},403);
       if(!Number.isInteger(body.id)||body.id<1)return response({error:'问题编号无效'},400);
       if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.length>30000)return response({error:'请填写最终回复（最多 30000 字）后再处理成功'},400);
+      if(typeof body.platform!=='string'||!body.platform.trim()||body.platform.length>1000)return response({error:'请确认平台后入库'},400);
       const rows=await sql`WITH target AS (SELECT * FROM support_tickets WHERE id=${body.id} FOR UPDATE), saved AS (
         INSERT INTO support_entries(province,platform,question,answer,keywords,source,published,ticket_id)
-        SELECT province,platform,question,${body.answer.trim()},${typeof body.keywords==='string'?body.keywords.slice(0,2000):''},${'待处理问题 #'+body.id},TRUE,id FROM target
-        ON CONFLICT(ticket_id) DO UPDATE SET answer=EXCLUDED.answer,keywords=EXCLUDED.keywords,published=TRUE,updated_at=NOW() RETURNING ticket_id
-      ) UPDATE support_tickets SET resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
+        SELECT province,${body.platform.trim()},question,${body.answer.trim()},${typeof body.keywords==='string'?body.keywords.slice(0,2000):''},${'待处理问题 #'+body.id},TRUE,id FROM target
+        ON CONFLICT(ticket_id) DO UPDATE SET platform=EXCLUDED.platform,answer=EXCLUDED.answer,keywords=EXCLUDED.keywords,published=TRUE,updated_at=NOW() RETURNING ticket_id
+      ) UPDATE support_tickets SET platform=${body.platform.trim()},resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
       if(!rows.length)return response({error:'问题不存在'},404);
     }
-    else{if(!['platform','question'].every(k=>typeof body[k]==='string'&&body[k].trim()&&body[k].length<=2000))return response({error:'请填写平台和问题'},400);await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${body.platform.trim()},${body.question.trim()},${user.username})`}
+    else{if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||(body.platform!=null&&(typeof body.platform!=='string'||body.platform.length>1000)))return response({error:'请填写有效问题'},400);await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${(body.platform||'').trim()},${body.question.trim()},${user.username})`}
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
