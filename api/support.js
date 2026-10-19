@@ -15,6 +15,8 @@ async function init(sql) {
     await sql`ALTER TABLE support_users ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1`;
     await sql`CREATE TABLE IF NOT EXISTS support_entries (id SERIAL PRIMARY KEY, province TEXT NOT NULL, platform TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', published BOOLEAN NOT NULL DEFAULT FALSE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
     await sql`CREATE TABLE IF NOT EXISTS support_tickets (id SERIAL PRIMARY KEY, province TEXT NOT NULL, platform TEXT NOT NULL, question TEXT NOT NULL, author TEXT NOT NULL, resolved BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
+    await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS answer TEXT NOT NULL DEFAULT ''`;
+    await sql`ALTER TABLE support_entries ADD COLUMN IF NOT EXISTS ticket_id INT UNIQUE`;
     await sql`CREATE TABLE IF NOT EXISTS support_attempts (username TEXT PRIMARY KEY, failures INT NOT NULL, started TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
   })().catch(e => { ready = null; throw e; });
   await ready;
@@ -23,7 +25,7 @@ const response = (data, status=200) => new Response(JSON.stringify(data), {statu
 export function validPassword(value){return typeof value==='string'&&value.length>=12&&value.length<=256;}
 export function hashPassword(value, salt=randomBytes(16).toString('hex')) {return salt+':'+scryptSync(value,salt,64).toString('hex');}
 function equal(a,b) {const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
-export function validEntry(e) {return e && ['province','platform','question','answer'].every(k=>typeof e[k]==='string'&&e[k].trim()&&e[k].length<=(k==='answer'?30000:1000))&&(!e.keywords||typeof e.keywords==='string'&&e.keywords.length<=2000)&&(!e.source||typeof e.source==='string'&&e.source.length<=1000);}
+export function validEntry(e) {return e && ['platform','question','answer'].every(k=>typeof e[k]==='string'&&e[k].trim()&&e[k].length<=(k==='answer'?30000:1000))&&(!e.keywords||typeof e.keywords==='string'&&e.keywords.length<=2000)&&(!e.source||typeof e.source==='string'&&e.source.length<=1000);}
 export async function handler(request) {
  try {
   const secret=process.env.JWT_SECRET;
@@ -83,9 +85,19 @@ export async function handler(request) {
   }
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
   if(action==='tickets'){
-    if(!write)return response(await sql`SELECT * FROM support_tickets ORDER BY created_at DESC LIMIT 500`);
-    if(body.id){if(user.role!=='admin')return response({error:'需要管理员权限'},403);await sql`UPDATE support_tickets SET resolved=${!!body.resolved} WHERE id=${body.id}`}
-    else{if(!['province','platform','question'].every(k=>typeof body[k]==='string'&&body[k].trim()&&body[k].length<=2000))return response({error:'请填写平台和问题'},400);await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES(${body.province},${body.platform},${body.question},${user.username})`}
+    if(!write)return response(await sql`SELECT * FROM support_tickets ORDER BY resolved ASC,created_at DESC`);
+    if(body.id){
+      if(user.role!=='admin')return response({error:'需要管理员权限'},403);
+      if(!Number.isInteger(body.id)||body.id<1)return response({error:'问题编号无效'},400);
+      if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.length>30000)return response({error:'请填写最终回复（最多 30000 字）后再处理成功'},400);
+      const rows=await sql`WITH target AS (SELECT * FROM support_tickets WHERE id=${body.id} FOR UPDATE), saved AS (
+        INSERT INTO support_entries(province,platform,question,answer,keywords,source,published,ticket_id)
+        SELECT province,platform,question,${body.answer.trim()},${typeof body.keywords==='string'?body.keywords.slice(0,2000):''},${'待处理问题 #'+body.id},TRUE,id FROM target
+        ON CONFLICT(ticket_id) DO UPDATE SET answer=EXCLUDED.answer,keywords=EXCLUDED.keywords,published=TRUE,updated_at=NOW() RETURNING ticket_id
+      ) UPDATE support_tickets SET resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
+      if(!rows.length)return response({error:'问题不存在'},404);
+    }
+    else{if(!['platform','question'].every(k=>typeof body[k]==='string'&&body[k].trim()&&body[k].length<=2000))return response({error:'请填写平台和问题'},400);await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${body.platform.trim()},${body.question.trim()},${user.username})`}
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
@@ -99,8 +111,8 @@ export async function handler(request) {
   }
   if(action==='entries'&&write){
     if(body.delete){await sql`DELETE FROM support_entries WHERE id=${body.id}`;return response({ok:true})}
-    const items=body.items||[body];if(!Array.isArray(items)||!items.length||items.length>100||!items.every(validEntry))return response({error:'请完整填写省份、平台、问题及答案，每次最多 100 条'},400);
-    await sql.transaction(items.map(e=>e.id?sql`UPDATE support_entries SET province=${e.province.trim()},platform=${e.platform.trim()},question=${e.question.trim()},answer=${e.answer.trim()},keywords=${e.keywords||''},source=${e.source||''},published=${!!e.published},updated_at=NOW() WHERE id=${e.id}`:sql`INSERT INTO support_entries(province,platform,question,answer,keywords,source,published) VALUES(${e.province.trim()},${e.platform.trim()},${e.question.trim()},${e.answer.trim()},${e.keywords||''},${e.source||''},${!!e.published})`));return response({ok:true});
+    const items=body.items||[body];if(!Array.isArray(items)||!items.length||items.length>100||!items.every(validEntry))return response({error:'请完整填写平台、问题及答案，每次最多 100 条'},400);
+    await sql.transaction(items.map(e=>e.id?sql`UPDATE support_entries SET province=${typeof e.province==='string'?e.province.trim():''},platform=${e.platform.trim()},question=${e.question.trim()},answer=${e.answer.trim()},keywords=${e.keywords||''},source=${e.source||''},published=${!!e.published},updated_at=NOW() WHERE id=${e.id}`:sql`INSERT INTO support_entries(province,platform,question,answer,keywords,source,published) VALUES(${typeof e.province==='string'?e.province.trim():''},${e.platform.trim()},${e.question.trim()},${e.answer.trim()},${e.keywords||''},${e.source||''},${!!e.published})`));return response({ok:true});
   }
   return response({error:'接口不存在'},404);
  }catch(e){console.error('Support request failed',e.code||e.name);return response({error:e.message==='DATABASE_NOT_CONFIGURED'?'请配置 DATABASE_URL 数据库连接':'服务暂不可用，请检查部署日志后重试'},503)}

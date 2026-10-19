@@ -1,7 +1,7 @@
 export function searchEntries(entries, province, platform, query) {
  const terms=query.toLowerCase().trim().split(/[\s，,。？?；;]+/).filter(Boolean);
- if(!province||!platform||!terms.length)return [];
- return entries.filter(e=>e.published&&e.province===province&&e.platform===platform).map(e=>{
+ if(!platform||!terms.length)return [];
+ return entries.filter(e=>e.published&&(!province||e.province===province)&&e.platform===platform).map(e=>{
   const text=(e.question+' '+e.keywords+' '+e.answer).toLowerCase();
   const keywords=(e.keywords||'').split(/[\s，,；;]+/).filter(Boolean);
   const score=terms.reduce((sum,t)=>sum+(text.includes(t)?5:0),0)+keywords.filter(k=>query.includes(k)).length*4;
