@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { generateAnswer } from '../server/ai.js';
 import { recognizeImages } from '../server/vision.js';
+import { COMMON_PLATFORM,validPlatform } from '../src/platforms.js';
 import { parseQuestion, IMAGE_QUESTION } from '../server/question.js';
 
 let ready;
@@ -23,6 +24,9 @@ async function init(sql) {
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS image_description TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS answer TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_entries ADD COLUMN IF NOT EXISTS ticket_id INT UNIQUE`;
+    await sql`CREATE TABLE IF NOT EXISTS support_platforms (id SERIAL PRIMARY KEY,name TEXT NOT NULL UNIQUE,notes TEXT NOT NULL DEFAULT '',active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
+    await sql`INSERT INTO support_platforms(name,notes) VALUES(${COMMON_PLATFORM},'适用于所有平台的通用知识') ON CONFLICT(name) DO NOTHING`;
+    await sql`INSERT INTO support_platforms(name) SELECT DISTINCT platform FROM (SELECT platform FROM support_entries UNION SELECT platform FROM support_tickets) p WHERE platform<>'' ON CONFLICT(name) DO NOTHING`;
     await sql`CREATE TABLE IF NOT EXISTS support_ai_usage (username TEXT PRIMARY KEY, started TIMESTAMPTZ NOT NULL DEFAULT NOW(), calls INT NOT NULL DEFAULT 0)`;
     await sql`CREATE TABLE IF NOT EXISTS support_attempts (username TEXT PRIMARY KEY, failures INT NOT NULL, started TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
   })().catch(e => { ready = null; throw e; });
@@ -99,6 +103,7 @@ export async function handler(request) {
     if(own)result.headers.set('Set-Cookie','support_session=; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age=0');
     return result;
   }
+  if(action==='platforms'&&!write)return response(await sql`SELECT * FROM support_platforms WHERE active=TRUE OR ${user.role==='admin'} ORDER BY CASE WHEN name=${COMMON_PLATFORM} THEN 0 ELSE 1 END,name`);
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
   if(action==='image'&&!write){
     const id=Number(new URL(request.url).searchParams.get('id'));
@@ -110,8 +115,8 @@ export async function handler(request) {
   if(action==='answer'&&write){
     let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}
     const {platform,question,images}=submission;
+    if(platform){const found=await sql`SELECT id FROM support_platforms WHERE name=${platform} AND active=TRUE`;if(!found.length)return response({error:'平台已停用或不存在，请刷新平台列表'},400)}
     const ticketId=await saveQuestion(sql,user.username,submission);
-    if(!platform&&!images.length)return response({mode:'insufficient',ticketId,notice:'问题已提交到待处理列表；未指定平台，等待管理员确认平台后回复。'});
     const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
     if(usage[0].calls>10)return response({mode:images.length?'insufficient':'fallback',ticketId,notice:'请求较频繁，问题已登记，请稍后重试或等待人工处理。'});
     let imageDescription='',lookupQuestion=question;
@@ -121,9 +126,8 @@ export async function handler(request) {
       imageDescription=recognition.text;
       await sql`UPDATE support_tickets SET image_description=${imageDescription} WHERE id=${ticketId}`;
       lookupQuestion=(question===IMAGE_QUESTION?'':question+'\n')+imageDescription;
-      if(!platform)return response({mode:'insufficient',ticketId,imageDescription,notice:'截图已识别并保存；未指定平台，等待管理员确认平台后回复。'});
     }
-    const rows=await sql`SELECT id,question,answer,keywords,source FROM support_entries WHERE platform=${platform} AND published=TRUE ORDER BY updated_at DESC`;
+    const rows=await sql`SELECT id,platform,question,answer,keywords,source FROM support_entries WHERE (platform=${platform} OR platform=${COMMON_PLATFORM}) AND published=TRUE ORDER BY updated_at DESC`;
     return response({ticketId,imageDescription,lookupQuestion,...await generateAnswer({platform,question:lookupQuestion,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL})});
   }
   if(action==='tickets'){
@@ -133,6 +137,7 @@ export async function handler(request) {
       if(!Number.isInteger(body.id)||body.id<1)return response({error:'问题编号无效'},400);
       if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.length>30000)return response({error:'请填写最终回复（最多 30000 字）后再处理成功'},400);
       if(typeof body.platform!=='string'||!body.platform.trim()||body.platform.length>1000)return response({error:'请确认平台后入库'},400);
+      const platformRows=await sql`SELECT id FROM support_platforms WHERE name=${body.platform.trim()}`;if(!platformRows.length)return response({error:'请先在平台字典新增该平台'},400);
       if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||body.question.trim()===IMAGE_QUESTION)return response({error:'请根据截图补充具体问题描述后入库'},400);
       const rows=await sql`WITH target AS (SELECT * FROM support_tickets WHERE id=${body.id} FOR UPDATE), saved AS (
         INSERT INTO support_entries(province,platform,question,answer,keywords,source,published,ticket_id)
@@ -145,6 +150,20 @@ export async function handler(request) {
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
+  if(action==='platforms'&&write){
+    if(!validPlatform(body))return response({error:'请填写平台名称（最多200字）、启用状态和有效说明'},400);
+    const name=body.name.trim(),notes=body.notes||'';
+    if(body.id){
+      const old=await sql`SELECT * FROM support_platforms WHERE id=${body.id}`;
+      if(!old.length)return response({error:'平台不存在'},404);
+      if(old[0].name===COMMON_PLATFORM)return response({error:'系统通用分类不能修改或停用'},400);
+      await sql`WITH old AS (SELECT id,name FROM support_platforms WHERE id=${body.id} FOR UPDATE), changed AS (
+        UPDATE support_platforms p SET name=${name},notes=${notes},active=${body.active} FROM old WHERE p.id=old.id RETURNING old.name AS old_name,p.name AS new_name
+      ), entries AS (UPDATE support_entries e SET platform=c.new_name FROM changed c WHERE e.platform=c.old_name RETURNING e.id)
+      UPDATE support_tickets t SET platform=c.new_name FROM changed c WHERE t.platform=c.old_name`;
+    }else await sql`INSERT INTO support_platforms(name,notes,active) VALUES(${name},${notes},${body.active})`;
+    return response({ok:true});
+  }
   if(action==='users'){
     if(!write)return response(await sql`SELECT username,active,role FROM support_users ORDER BY username`);
     if(typeof body.username!=='string'||!body.username.trim()||body.username.length>100||body.username===process.env.ADMIN_USERNAME)return response({error:'请输入有效的新客服账号'},400);
@@ -156,9 +175,10 @@ export async function handler(request) {
   if(action==='entries'&&write){
     if(body.delete){await sql`DELETE FROM support_entries WHERE id=${body.id}`;return response({ok:true})}
     const items=body.items||[body];if(!Array.isArray(items)||!items.length||items.length>100||!items.every(validEntry))return response({error:'请完整填写平台、问题及答案，每次最多 100 条'},400);
+    const platforms=await sql`SELECT name FROM support_platforms`;if(items.some(e=>!platforms.some(p=>p.name===e.platform.trim())))return response({error:'请先在平台字典维护知识所属平台'},400);
     await sql.transaction(items.map(e=>e.id?sql`UPDATE support_entries SET province=${typeof e.province==='string'?e.province.trim():''},platform=${e.platform.trim()},question=${e.question.trim()},answer=${e.answer.trim()},keywords=${e.keywords||''},source=${e.source||''},published=${!!e.published},updated_at=NOW() WHERE id=${e.id}`:sql`INSERT INTO support_entries(province,platform,question,answer,keywords,source,published) VALUES(${typeof e.province==='string'?e.province.trim():''},${e.platform.trim()},${e.question.trim()},${e.answer.trim()},${e.keywords||''},${e.source||''},${!!e.published})`));return response({ok:true});
   }
   return response({error:'接口不存在'},404);
- }catch(e){console.error('Support request failed',e.code||e.name);return response({error:e.message==='DATABASE_NOT_CONFIGURED'?'请配置 DATABASE_URL 数据库连接':'服务暂不可用，请检查部署日志后重试'},503)}
+ }catch(e){if(e.code==='23505')return response({error:'名称已存在，请使用已有条目或更换名称'},409);console.error('Support request failed',e.code||e.name);return response({error:e.message==='DATABASE_NOT_CONFIGURED'?'请配置 DATABASE_URL 数据库连接':'服务暂不可用，请检查部署日志后重试'},503)}
 }
 export const GET=handler;export const POST=handler;
