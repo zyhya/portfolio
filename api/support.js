@@ -9,6 +9,7 @@ import { parseQuestion, IMAGE_QUESTION } from '../server/question.js';
 import { parsePublishIds } from '../src/knowledge-management.js';
 import { searchEntries } from '../src/support-model.js';
 import {parseTicketFeedback,saveTicketFeedback} from '../server/ticket-feedback.js';
+import {parseTicketDeleteId,deleteTicket} from '../server/ticket-management.js';
 
 let ready;
 function database() {
@@ -147,6 +148,13 @@ export async function handler(request) {
     const ticket=await saveTicketFeedback(sql,user,feedback);
     if(!ticket)return response({error:'问题不存在或无权操作'},404);
     return response({ok:true,ticket});
+  }
+  if(action==='deleteTicket'&&write){
+    if(user.role!=='admin')return response({error:'需要管理员权限'},403);
+    let id;try{id=parseTicketDeleteId(body)}catch(e){return response({error:e.message},400)}
+    const deleted=await deleteTicket(sql,id);
+    if(!deleted)return response({error:'问题不存在'},404);
+    return response({ok:true,id:deleted.id});
   }
   if(action==='tickets'){
     if(!write)return response(await sql`SELECT t.*,COALESCE((SELECT json_agg(json_build_object('id',i.id,'name',i.name) ORDER BY i.id) FROM support_ticket_images i WHERE i.ticket_id=t.id),'[]'::json) AS images FROM support_tickets t ORDER BY resolved ASC,created_at DESC`);
