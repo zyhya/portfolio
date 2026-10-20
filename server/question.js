@@ -1,3 +1,4 @@
+import {COMMON_PLATFORM} from '../src/platforms.js';
 export const MAX_IMAGES = 3;
 export const MAX_IMAGE_BYTES = 300 * 1024;
 export const IMAGE_QUESTION = '图片问题（请管理员补充问题描述）';
@@ -7,6 +8,7 @@ export function parseQuestion(body) {
   const question = body.question ?? '';
   const platform = body.platform ?? '';
   if (typeof question !== 'string' || question.length > 2000 || typeof platform !== 'string' || platform.length > 1000) throw new Error('问题最多 2000 字，请检查平台和问题');
+  if (!platform.trim() || platform.trim() === COMMON_PLATFORM) throw new Error('请先选择培训平台');
   const images = body.images ?? [];
   if (!Array.isArray(images) || images.length > MAX_IMAGES) throw new Error('每次最多上传 3 张图片');
   const attachments = images.map(image => {

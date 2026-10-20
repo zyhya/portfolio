@@ -1,3 +1,4 @@
+import {modelConfig} from '../server/model-provider.js';
 import { neon } from '@neondatabase/serverless';
 import jwt from 'jsonwebtoken';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
@@ -7,6 +8,7 @@ import { COMMON_PLATFORM,validPlatform } from '../src/platforms.js';
 import { parseQuestion, IMAGE_QUESTION } from '../server/question.js';
 import { parsePublishIds } from '../src/knowledge-management.js';
 import { searchEntries } from '../src/support-model.js';
+import {parseTicketFeedback,saveTicketFeedback} from '../server/ticket-feedback.js';
 
 let ready;
 function database() {
@@ -25,6 +27,9 @@ async function init(sql) {
     await sql`CREATE INDEX IF NOT EXISTS support_ticket_images_ticket_idx ON support_ticket_images(ticket_id)`;
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS image_description TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS answer TEXT NOT NULL DEFAULT ''`;
+    await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS feedback_resolved BOOLEAN`;
+    await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS feedback_at TIMESTAMPTZ`;
+    await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS feedback_by TEXT`;
     await sql`ALTER TABLE support_entries ADD COLUMN IF NOT EXISTS ticket_id INT UNIQUE`;
     await sql`CREATE TABLE IF NOT EXISTS support_platforms (id SERIAL PRIMARY KEY,name TEXT NOT NULL UNIQUE,notes TEXT NOT NULL DEFAULT '',active BOOLEAN NOT NULL DEFAULT TRUE,created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
     await sql`INSERT INTO support_platforms(name,notes) VALUES(${COMMON_PLATFORM},'适用于所有平台的通用知识') ON CONFLICT(name) DO NOTHING`;
@@ -120,18 +125,28 @@ export async function handler(request) {
     if(platform){const found=await sql`SELECT id FROM support_platforms WHERE name=${platform} AND active=TRUE`;if(!found.length)return response({error:'平台已停用或不存在，请重新选择平台'},400)}
     const ticketId=await saveQuestion(sql,user.username,submission);
     const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
-    if(usage[0].calls>10)return response({mode:'insufficient',ticketId,notice:'请求较频繁，问题已登记，请稍后重试或等待人工处理。'});
+    if(usage[0].calls>10&&images.length)return response({mode:'insufficient',ticketId,notice:'请求较频繁，图片问题已登记，请稍后重试或询问技术人员。'});
+    if(usage[0].calls>10){
+      const rows=await sql`SELECT id,platform,question,answer,keywords,source,published FROM support_entries WHERE (platform=${platform} OR platform=${COMMON_PLATFORM}) AND published=TRUE ORDER BY updated_at DESC`;
+      return response({mode:'fallback',ticketId,notice:'AI 请求较频繁，已使用知识库匹配。',matches:searchEntries(rows,'',platform,question)});
+    }
     let imageDescription='',lookupQuestion=question;
     if(images.length){
-      const recognition=await recognizeImages({images,question:question===IMAGE_QUESTION?'':question,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_VISION_MODEL||process.env.OPENAI_MODEL});
+      const recognition=await recognizeImages({images,question:question===IMAGE_QUESTION?'':question,config:modelConfig(process.env,true)});
       if(!recognition.ok)return response({mode:'insufficient',ticketId,notice:recognition.notice});
       imageDescription=recognition.text;
       await sql`UPDATE support_tickets SET image_description=${imageDescription} WHERE id=${ticketId}`;
       lookupQuestion=(question===IMAGE_QUESTION?'':question+'\n')+imageDescription;
     }
     const rows=await sql`SELECT id,platform,question,answer,keywords,source,published FROM support_entries WHERE (platform=${platform} OR platform=${COMMON_PLATFORM}) AND published=TRUE ORDER BY updated_at DESC`;
-    const result=await generateAnswer({platform,question:lookupQuestion,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL});
+    const result=await generateAnswer({platform,question:lookupQuestion,rows,config:modelConfig()});
     return response({ticketId,imageDescription,lookupQuestion,...result,...(result.mode==='fallback'?{matches:searchEntries(rows,'',platform,lookupQuestion)}:{})});
+  }
+  if(action==='ticketFeedback'&&write){
+    let feedback;try{feedback=parseTicketFeedback(body)}catch(e){return response({error:e.message},400)}
+    const ticket=await saveTicketFeedback(sql,user,feedback);
+    if(!ticket)return response({error:'问题不存在或无权操作'},404);
+    return response({ok:true,ticket});
   }
   if(action==='tickets'){
     if(!write)return response(await sql`SELECT t.*,COALESCE((SELECT json_agg(json_build_object('id',i.id,'name',i.name) ORDER BY i.id) FROM support_ticket_images i WHERE i.ticket_id=t.id),'[]'::json) AS images FROM support_tickets t ORDER BY resolved ASC,created_at DESC`);
@@ -149,7 +164,7 @@ export async function handler(request) {
       ) UPDATE support_tickets SET question=${body.question.trim()},platform=${body.platform.trim()},resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
       if(!rows.length)return response({error:'问题不存在'},404);
     }
-    else{let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}await saveQuestion(sql,user.username,submission)}
+    else{let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}const found=await sql`SELECT id FROM support_platforms WHERE name=${submission.platform} AND active=TRUE`;if(!found.length)return response({error:'平台已停用或不存在，请重新选择平台'},400);await saveQuestion(sql,user.username,submission)}
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
