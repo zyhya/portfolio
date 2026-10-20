@@ -2,6 +2,8 @@ import { neon } from '@neondatabase/serverless';
 import jwt from 'jsonwebtoken';
 import { scryptSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { generateAnswer } from '../server/ai.js';
+import { recognizeImages } from '../server/vision.js';
+import { parseQuestion, IMAGE_QUESTION } from '../server/question.js';
 
 let ready;
 function database() {
@@ -16,6 +18,9 @@ async function init(sql) {
     await sql`ALTER TABLE support_users ADD COLUMN IF NOT EXISTS version INT NOT NULL DEFAULT 1`;
     await sql`CREATE TABLE IF NOT EXISTS support_entries (id SERIAL PRIMARY KEY, province TEXT NOT NULL, platform TEXT NOT NULL, question TEXT NOT NULL, answer TEXT NOT NULL, keywords TEXT NOT NULL DEFAULT '', source TEXT NOT NULL DEFAULT '', published BOOLEAN NOT NULL DEFAULT FALSE, updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
     await sql`CREATE TABLE IF NOT EXISTS support_tickets (id SERIAL PRIMARY KEY, province TEXT NOT NULL, platform TEXT NOT NULL, question TEXT NOT NULL, author TEXT NOT NULL, resolved BOOLEAN NOT NULL DEFAULT FALSE, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`;
+    await sql`CREATE TABLE IF NOT EXISTS support_ticket_images (id SERIAL PRIMARY KEY, ticket_id INT NOT NULL REFERENCES support_tickets(id) ON DELETE CASCADE, name TEXT NOT NULL, mime TEXT NOT NULL, data TEXT NOT NULL)`;
+    await sql`CREATE INDEX IF NOT EXISTS support_ticket_images_ticket_idx ON support_ticket_images(ticket_id)`;
+    await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS image_description TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_tickets ADD COLUMN IF NOT EXISTS answer TEXT NOT NULL DEFAULT ''`;
     await sql`ALTER TABLE support_entries ADD COLUMN IF NOT EXISTS ticket_id INT UNIQUE`;
     await sql`CREATE TABLE IF NOT EXISTS support_ai_usage (username TEXT PRIMARY KEY, started TIMESTAMPTZ NOT NULL DEFAULT NOW(), calls INT NOT NULL DEFAULT 0)`;
@@ -28,6 +33,15 @@ export function validPassword(value){return typeof value==='string'&&value.lengt
 export function hashPassword(value, salt=randomBytes(16).toString('hex')) {return salt+':'+scryptSync(value,salt,64).toString('hex');}
 function equal(a,b) {const x=Buffer.from(a),y=Buffer.from(b);return x.length===y.length&&timingSafeEqual(x,y);}
 export function validEntry(e) {return e && ['platform','question','answer'].every(k=>typeof e[k]==='string'&&e[k].trim()&&e[k].length<=(k==='answer'?30000:1000))&&(!e.keywords||typeof e.keywords==='string'&&e.keywords.length<=2000)&&(!e.source||typeof e.source==='string'&&e.source.length<=1000);}
+async function saveQuestion(sql,username,{platform,question,images}) {
+  const tickets=await sql`WITH ticket AS (
+    INSERT INTO support_tickets(province,platform,question,author) VALUES('',${platform},${question},${username}) RETURNING id
+  ), attachments AS (
+    INSERT INTO support_ticket_images(ticket_id,name,mime,data)
+    SELECT ticket.id,image->>'name',image->>'mime',image->>'data' FROM ticket CROSS JOIN jsonb_array_elements(${JSON.stringify(images)}::jsonb) AS image RETURNING id
+  ) SELECT ticket.id,(SELECT COUNT(*) FROM attachments) AS image_count FROM ticket`;
+  return tickets[0].id;
+}
 export async function handler(request) {
  try {
   const secret=process.env.JWT_SECRET;
@@ -37,7 +51,7 @@ export async function handler(request) {
   const write=request.method==='POST';
   if(write){const origin=request.headers.get('origin');if(origin&&origin!==new URL(request.url).origin)return response({error:'请求来源无效'},403)}
   if(!['GET','POST'].includes(request.method))return response({error:'不支持此请求'},405);
-  let body={};if(write){const text=await request.text();if(text.length>1500000)return response({error:'导入内容过大，请分批处理'},413);try{body=JSON.parse(text)}catch{return response({error:'请求格式错误'},400)}}
+  let body={};if(write){const text=await request.text();if(text.length>1500000)return response({error:'提交内容过大，请减少图片或分批导入'},413);try{body=JSON.parse(text)}catch{return response({error:'请求格式错误'},400)}}
   if(action==='login'&&write){
     const {username,password}=body;
     if(typeof username!=='string'||username.length>100||typeof password!=='string'||password.length>256)return response({error:'请输入有效账号和密码'},400);
@@ -86,32 +100,48 @@ export async function handler(request) {
     return result;
   }
   if(action==='entries'&&!write)return response(await sql`SELECT * FROM support_entries WHERE published=TRUE OR ${user.role==='admin'} ORDER BY updated_at DESC`);
+  if(action==='image'&&!write){
+    const id=Number(new URL(request.url).searchParams.get('id'));
+    if(!Number.isSafeInteger(id)||id<1)return response({error:'图片编号无效'},400);
+    const images=await sql`SELECT i.mime,i.data FROM support_ticket_images i JOIN support_tickets t ON t.id=i.ticket_id WHERE i.id=${id} AND (t.author=${user.username} OR ${user.role==='admin'})`;
+    if(!images.length)return response({error:'图片不存在或无权查看'},404);
+    return new Response(Buffer.from(images[0].data,'base64'),{headers:{'Content-Type':images[0].mime,'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'none'"}});
+  }
   if(action==='answer'&&write){
-    if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||(body.platform!=null&&(typeof body.platform!=='string'||body.platform.length>1000)))return response({error:'请填写有效问题'},400);
-    const platform=(body.platform||'').trim(),question=body.question.trim();
-    const tickets=await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${platform},${question},${user.username}) RETURNING id`;
-    const ticketId=tickets[0].id;
-    if(!platform)return response({mode:'insufficient',ticketId,notice:'问题已提交到待处理列表；未指定平台，等待管理员确认平台后回复。'});
+    let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}
+    const {platform,question,images}=submission;
+    const ticketId=await saveQuestion(sql,user.username,submission);
+    if(!platform&&!images.length)return response({mode:'insufficient',ticketId,notice:'问题已提交到待处理列表；未指定平台，等待管理员确认平台后回复。'});
     const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
-    if(usage[0].calls>10)return response({mode:'fallback',ticketId,notice:'请求较频繁，问题已登记，暂用知识库匹配。'});
+    if(usage[0].calls>10)return response({mode:images.length?'insufficient':'fallback',ticketId,notice:'请求较频繁，问题已登记，请稍后重试或等待人工处理。'});
+    let imageDescription='',lookupQuestion=question;
+    if(images.length){
+      const recognition=await recognizeImages({images,question:question===IMAGE_QUESTION?'':question,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_VISION_MODEL||process.env.OPENAI_MODEL});
+      if(!recognition.ok)return response({mode:'insufficient',ticketId,notice:recognition.notice});
+      imageDescription=recognition.text;
+      await sql`UPDATE support_tickets SET image_description=${imageDescription} WHERE id=${ticketId}`;
+      lookupQuestion=(question===IMAGE_QUESTION?'':question+'\n')+imageDescription;
+      if(!platform)return response({mode:'insufficient',ticketId,imageDescription,notice:'截图已识别并保存；未指定平台，等待管理员确认平台后回复。'});
+    }
     const rows=await sql`SELECT id,question,answer,keywords,source FROM support_entries WHERE platform=${platform} AND published=TRUE ORDER BY updated_at DESC`;
-    return response({ticketId,...await generateAnswer({platform,question,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL})});
+    return response({ticketId,imageDescription,lookupQuestion,...await generateAnswer({platform,question:lookupQuestion,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL})});
   }
   if(action==='tickets'){
-    if(!write)return response(await sql`SELECT * FROM support_tickets ORDER BY resolved ASC,created_at DESC`);
+    if(!write)return response(await sql`SELECT t.*,COALESCE((SELECT json_agg(json_build_object('id',i.id,'name',i.name) ORDER BY i.id) FROM support_ticket_images i WHERE i.ticket_id=t.id),'[]'::json) AS images FROM support_tickets t ORDER BY resolved ASC,created_at DESC`);
     if(body.id){
       if(user.role!=='admin')return response({error:'需要管理员权限'},403);
       if(!Number.isInteger(body.id)||body.id<1)return response({error:'问题编号无效'},400);
       if(typeof body.answer!=='string'||!body.answer.trim()||body.answer.length>30000)return response({error:'请填写最终回复（最多 30000 字）后再处理成功'},400);
       if(typeof body.platform!=='string'||!body.platform.trim()||body.platform.length>1000)return response({error:'请确认平台后入库'},400);
+      if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||body.question.trim()===IMAGE_QUESTION)return response({error:'请根据截图补充具体问题描述后入库'},400);
       const rows=await sql`WITH target AS (SELECT * FROM support_tickets WHERE id=${body.id} FOR UPDATE), saved AS (
         INSERT INTO support_entries(province,platform,question,answer,keywords,source,published,ticket_id)
-        SELECT province,${body.platform.trim()},question,${body.answer.trim()},${typeof body.keywords==='string'?body.keywords.slice(0,2000):''},${'待处理问题 #'+body.id},TRUE,id FROM target
-        ON CONFLICT(ticket_id) DO UPDATE SET platform=EXCLUDED.platform,answer=EXCLUDED.answer,keywords=EXCLUDED.keywords,published=TRUE,updated_at=NOW() RETURNING ticket_id
-      ) UPDATE support_tickets SET platform=${body.platform.trim()},resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
+        SELECT province,${body.platform.trim()},${body.question.trim()},${body.answer.trim()},${typeof body.keywords==='string'?body.keywords.slice(0,2000):''},${'待处理问题 #'+body.id},TRUE,id FROM target
+        ON CONFLICT(ticket_id) DO UPDATE SET platform=EXCLUDED.platform,question=EXCLUDED.question,answer=EXCLUDED.answer,keywords=EXCLUDED.keywords,published=TRUE,updated_at=NOW() RETURNING ticket_id
+      ) UPDATE support_tickets SET question=${body.question.trim()},platform=${body.platform.trim()},resolved=TRUE,answer=${body.answer.trim()} WHERE id IN (SELECT ticket_id FROM saved) RETURNING id`;
       if(!rows.length)return response({error:'问题不存在'},404);
     }
-    else{if(typeof body.question!=='string'||!body.question.trim()||body.question.length>2000||(body.platform!=null&&(typeof body.platform!=='string'||body.platform.length>1000)))return response({error:'请填写有效问题'},400);await sql`INSERT INTO support_tickets(province,platform,question,author) VALUES('',${(body.platform||'').trim()},${body.question.trim()},${user.username})`}
+    else{let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}await saveQuestion(sql,user.username,submission)}
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
