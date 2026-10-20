@@ -5,6 +5,8 @@ import { generateAnswer } from '../server/ai.js';
 import { recognizeImages } from '../server/vision.js';
 import { COMMON_PLATFORM,validPlatform } from '../src/platforms.js';
 import { parseQuestion, IMAGE_QUESTION } from '../server/question.js';
+import { parsePublishIds } from '../src/knowledge-management.js';
+import { searchEntries } from '../src/support-model.js';
 
 let ready;
 function database() {
@@ -115,10 +117,10 @@ export async function handler(request) {
   if(action==='answer'&&write){
     let submission;try{submission=parseQuestion(body)}catch(e){return response({error:e.message},400)}
     const {platform,question,images}=submission;
-    if(platform){const found=await sql`SELECT id FROM support_platforms WHERE name=${platform} AND active=TRUE`;if(!found.length)return response({error:'平台已停用或不存在，请刷新平台列表'},400)}
+    if(platform){const found=await sql`SELECT id FROM support_platforms WHERE name=${platform} AND active=TRUE`;if(!found.length)return response({error:'平台已停用或不存在，请重新选择平台'},400)}
     const ticketId=await saveQuestion(sql,user.username,submission);
     const usage=await sql`INSERT INTO support_ai_usage(username,calls) VALUES(${user.username},1) ON CONFLICT(username) DO UPDATE SET calls=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN 1 ELSE support_ai_usage.calls+1 END,started=CASE WHEN support_ai_usage.started<NOW()-INTERVAL '1 minute' THEN NOW() ELSE support_ai_usage.started END RETURNING calls`;
-    if(usage[0].calls>10)return response({mode:images.length?'insufficient':'fallback',ticketId,notice:'请求较频繁，问题已登记，请稍后重试或等待人工处理。'});
+    if(usage[0].calls>10)return response({mode:'insufficient',ticketId,notice:'请求较频繁，问题已登记，请稍后重试或等待人工处理。'});
     let imageDescription='',lookupQuestion=question;
     if(images.length){
       const recognition=await recognizeImages({images,question:question===IMAGE_QUESTION?'':question,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_VISION_MODEL||process.env.OPENAI_MODEL});
@@ -127,8 +129,9 @@ export async function handler(request) {
       await sql`UPDATE support_tickets SET image_description=${imageDescription} WHERE id=${ticketId}`;
       lookupQuestion=(question===IMAGE_QUESTION?'':question+'\n')+imageDescription;
     }
-    const rows=await sql`SELECT id,platform,question,answer,keywords,source FROM support_entries WHERE (platform=${platform} OR platform=${COMMON_PLATFORM}) AND published=TRUE ORDER BY updated_at DESC`;
-    return response({ticketId,imageDescription,lookupQuestion,...await generateAnswer({platform,question:lookupQuestion,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL})});
+    const rows=await sql`SELECT id,platform,question,answer,keywords,source,published FROM support_entries WHERE (platform=${platform} OR platform=${COMMON_PLATFORM}) AND published=TRUE ORDER BY updated_at DESC`;
+    const result=await generateAnswer({platform,question:lookupQuestion,rows,key:process.env.OPENAI_API_KEY,model:process.env.OPENAI_MODEL});
+    return response({ticketId,imageDescription,lookupQuestion,...result,...(result.mode==='fallback'?{matches:searchEntries(rows,'',platform,lookupQuestion)}:{})});
   }
   if(action==='tickets'){
     if(!write)return response(await sql`SELECT t.*,COALESCE((SELECT json_agg(json_build_object('id',i.id,'name',i.name) ORDER BY i.id) FROM support_ticket_images i WHERE i.ticket_id=t.id),'[]'::json) AS images FROM support_tickets t ORDER BY resolved ASC,created_at DESC`);
@@ -150,6 +153,15 @@ export async function handler(request) {
     return response({ok:true});
   }
   if(user.role!=='admin')return response({error:'需要管理员权限'},403);
+  if(action==='publishEntries'&&write){
+    let ids;try{ids=parsePublishIds(body.ids)}catch(e){return response({error:e.message},400)}
+    const rows=await sql`UPDATE support_entries SET published=TRUE,updated_at=NOW()
+      WHERE id=ANY(${ids}::int[]) AND published=FALSE
+      AND LENGTH(TRIM(question))>0 AND LENGTH(TRIM(answer))>0
+      AND platform IN (SELECT name FROM support_platforms)
+      RETURNING id`;
+    return response({ok:true,published:rows.length,skipped:ids.length-rows.length});
+  }
   if(action==='platforms'&&write){
     if(!validPlatform(body))return response({error:'请填写平台名称（最多200字）、启用状态和有效说明'},400);
     const name=body.name.trim(),notes=body.notes||'';
